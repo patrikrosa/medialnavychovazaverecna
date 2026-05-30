@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deepfake — vzorová hodina mediálnej výchovy</title>
+
+<!-- Fonts: Bodoni Moda = autoritatívny "klasický" displej (pravda/monument), Archivo = čitateľné telo, JetBrains Mono = forenzná/dátová vrstva -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;0,6..96,900;1,6..96,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- Engine: GSAP + ScrollTrigger (scroll choreografia), Lenis (plynulý scroll), SplitType (delenie textu na slová/znaky) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/split-type@0.3.4/umd/index.min.js"></script>
+<!-- WebGL: pole častíc = latentný šum, z ktorého generatívna AI vytvára obsah -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<style>
+  :root{
+    --d-bg:#0b0b0d;          /* tma: úvod/záver */
+    --d-ink:#f3efe6;
+    --d-soft:#8b8678;
+    --l-bg:#f4f1ea;          /* svetlo: čitateľná hodina */
+    --l-ink:#191712;
+    --l-soft:#6f6b61;
+    --line:#e2ddd0;
+    --acc:#e23b2e;           /* jediný akcent: výstraha / falošné */
+    --real:#2f7d54;          /* len v teste: reálne */
+    --blue:#2a52cc;
+    --serif:"Bodoni Moda",Georgia,serif;
+    --sans:"Archivo",-apple-system,Helvetica,Arial,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  body{background:var(--d-bg);color:var(--l-ink);font-family:var(--sans);font-size:18px;line-height:1.6;overflow-x:hidden}
+  ::selection{background:var(--acc);color:#fff}
+  a{color:inherit;text-decoration:none}
+  img{display:block;max-width:100%}
+
+  /* ---------- film grain = "syntetický šum", surovina generovaných médií ---------- */
+  .grain{position:fixed;inset:-50%;z-index:9000;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation:grain 0.5s steps(2) infinite}
+  @keyframes grain{0%{transform:translate(0,0)}50%{transform:translate(-3%,2%)}100%{transform:translate(2%,-2%)}}
+
+  /* ---------- preloader ---------- */
+  .pre{position:fixed;inset:0;z-index:9999;background:var(--d-bg);color:var(--d-ink);display:flex;align-items:flex-end;justify-content:space-between;padding:6vw}
+  .pre .pl{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--d-soft)}
+  .pre .pc{font-family:var(--serif);font-size:clamp(60px,16vw,200px);font-weight:900;line-height:.8}
+
+  /* ---------- progress + nav ---------- */
+  #prog{position:fixed;top:0;left:0;height:2px;width:100%;background:var(--acc);transform:scaleX(0);transform-origin:left;z-index:8000}
+  nav.bar{position:fixed;top:0;left:0;width:100%;z-index:7000;display:flex;justify-content:space-between;align-items:center;
+    padding:14px 24px;mix-blend-mode:difference;color:#fff;opacity:0;pointer-events:none;transition:opacity .4s}
+  nav.bar.show{opacity:1;pointer-events:auto}
+  nav.bar .nb{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+  nav.bar .nb b{color:#fff}
+  nav.bar .pos{font-family:var(--mono);font-size:12px;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+
+  .mono{font-family:var(--mono)}
+  .kick{font-family:var(--mono);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
+
+  /* =========================================================
+     INTRO (dark)
+     ========================================================= */
+  .intro{position:relative;z-index:1;background:transparent;color:var(--d-ink)}
+  /* fixné WebGL plátno za úvodom; lekcia (z-index:2) ho pri scrolle prekryje */
+  #gl{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+  /* keď beží WebGL: titul je z častíc, ostatný text sa rozmiestni okolo stredu */
+  .hero.gl-on{justify-content:flex-end;padding-bottom:15vh}
+  .hero.gl-on .glitch{display:none}
+  .hero.gl-on .kick{position:absolute;top:13vh;left:6vw;margin:0}
+  .hero.gl-on .sub{max-width:34ch}
+  .hero{height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 6vw;position:relative}
+  .hero .kick{margin-bottom:24px}
+  .glitch{font-family:var(--serif);font-weight:900;font-size:clamp(72px,21vw,300px);line-height:.82;letter-spacing:-.02em;position:relative;display:inline-block}
+  .glitch::before,.glitch::after{content:attr(data-text);position:absolute;inset:0;clip-path:inset(0 0 0 0)}
+  .glitch::before{color:var(--acc);animation:gl1 2.6s steps(2) 3;mix-blend-mode:screen}
+  .glitch::after{color:#3ad7ff;animation:gl2 2.6s steps(2) 3;mix-blend-mode:screen}
+  @keyframes gl1{0%,100%{transform:translate(0,0);opacity:0}5%{transform:translate(-4px,2px);opacity:.9}10%{transform:translate(3px,-2px)}15%{opacity:0}40%{opacity:0}43%{transform:translate(5px,1px);opacity:.8}46%{opacity:0}}
+  @keyframes gl2{0%,100%{transform:translate(0,0);opacity:0}6%{transform:translate(4px,-2px);opacity:.9}11%{transform:translate(-3px,2px)}16%{opacity:0}41%{opacity:0}44%{transform:translate(-5px,-1px);opacity:.8}47%{opacity:0}}
+  .hero .sub{font-family:var(--serif);font-style:italic;font-size:clamp(22px,3.4vw,40px);color:var(--d-soft);margin-top:18px}
+  .hero .by{font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;color:var(--d-soft);margin-top:40px;text-transform:uppercase}
+  .scrollhint{position:absolute;bottom:30px;left:6vw;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--d-soft)}
+  .scrollhint span{display:inline-block;animation:bob 1.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+
+  /* pinned statement sequence */
+  #statement{height:100vh;display:flex;align-items:center;justify-content:center;padding:0 6vw;position:relative;overflow:hidden}
+  .st-line{position:absolute;max-width:18ch;text-align:center;font-family:var(--serif);font-weight:500;
+    font-size:clamp(34px,6vw,78px);line-height:1.05;letter-spacing:-.02em;opacity:0}
+  .st-line.q{max-width:24ch;font-style:italic}
+  .st-line .em{color:var(--acc)}
+
+  /* =========================================================
+     LESSON (light)
+     ========================================================= */
+  .lesson{background:var(--l-bg);color:var(--l-ink);position:relative;z-index:2}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  .col{max-width:720px;margin:0 auto}
+
+  .lesson__intro{padding:14vh 0 6vh}
+  .lesson__intro .stand{font-family:var(--serif);font-size:clamp(24px,3.4vw,40px);line-height:1.25;font-weight:500;max-width:20ch}
+  .lesson__intro .meta{display:flex;flex-wrap:wrap;gap:6px 28px;margin-top:34px;font-family:var(--mono);font-size:12.5px;color:var(--l-soft);text-transform:uppercase;letter-spacing:.04em}
+  .lesson__intro .meta b{color:var(--l-ink)}
+
+  section.s{padding:8vh 0;border-top:1px solid var(--line)}
+  .s-head{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;margin-bottom:18px}
+  .s-num{font-family:var(--serif);font-weight:900;font-size:clamp(40px,7vw,82px);line-height:.8;color:var(--l-ink);opacity:.13}
+  .s-titles .lab{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);display:block;margin-bottom:6px}
+  h2.st-t{font-family:var(--serif);font-weight:700;font-size:clamp(28px,4.4vw,46px);line-height:1.05;letter-spacing:-.02em}
+  .dek{font-family:var(--serif);font-style:italic;font-size:clamp(18px,2.2vw,22px);color:var(--l-soft);margin:6px 0 26px;max-width:52ch}
+  p{margin:0 0 16px}
+  h3{font-size:16px;font-weight:700;margin:26px 0 8px;letter-spacing:.01em}
+  ul,ol.list{margin:0 0 16px;padding-left:24px}
+  li{margin-bottom:8px}
+  li::marker{color:var(--acc)}
+  b,strong{font-weight:700}
+  .k{color:var(--acc);font-weight:700}
+  .small{font-family:var(--mono);font-size:12.5px;color:var(--l-soft)}
+
+  .pull{font-family:var(--serif);font-size:clamp(26px,4.4vw,46px);line-height:1.18;font-weight:500;letter-spacing:-.01em;
+    border-left:3px solid var(--acc);padding-left:24px;margin:10px 0}
+
+  .block{border:1px solid var(--line);border-left:3px solid var(--acc);background:#fffdf8;border-radius:0 12px 12px 0;padding:18px 22px;margin:0 0 16px}
+  .block .h{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--l-soft);margin-bottom:4px}
+  .block .pick{font-family:var(--serif);font-style:italic;font-size:20px;color:var(--acc);display:block;margin-bottom:8px}
+  .block p:last-child{margin-bottom:0}
+
+  /* dual-use spectrum: bod sleduje tvoj scroll = kontinuum využitia */
+  #spectrum{margin:26px 0}
+  .spec-track{position:relative;height:3px;background:linear-gradient(90deg,var(--real),#ccc,var(--acc));border-radius:3px;margin:36px 0 14px}
+  .spec-dot{position:absolute;top:50%;left:2%;width:18px;height:18px;border-radius:50%;background:var(--l-bg);border:2px solid var(--l-ink);transform:translate(-50%,-50%);box-shadow:0 2px 10px rgba(0,0,0,.15)}
+  .spec-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px}
+  .spec-ends .l{color:var(--real)}.spec-ends .r{color:var(--acc)}
+  .spec-read{text-align:center;font-family:var(--serif);font-style:italic;font-size:20px;margin-top:10px;min-height:1.4em}
+
+  .phase{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:18px 22px;margin-bottom:14px}
+  .phase .ph{display:flex;align-items:baseline;gap:14px;margin-bottom:10px}
+  .phase .L{font-family:var(--serif);font-weight:900;font-size:30px;color:var(--acc)}
+  .phase .nm{font-weight:700;font-size:18px}
+  .phase .t{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--l-soft)}
+  .phase p{margin:0 0 10px}.phase p:last-child{margin:0}
+  .mins{font-family:var(--mono);font-weight:700;color:var(--acc);font-size:13px}
+
+  .case{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:18px 22px;margin-bottom:14px}
+  .case .ti{font-family:var(--serif);font-weight:700;font-size:21px;margin-bottom:8px;line-height:1.15}
+  .case .ti .id{color:var(--acc);margin-right:8px}
+  .q-ask{font-family:var(--serif);font-style:italic;color:var(--l-soft);font-size:16px;margin-top:10px}
+  .callout{border:1px solid var(--line);border-left:3px solid var(--acc);background:#fdf1ef;border-radius:0 10px 10px 0;padding:14px 18px;margin:12px 0;font-size:15.5px}
+  .callout.b{border-left-color:var(--blue);background:#eef1fc}
+
+  /* liar's dividend mikro-vizuál: pravda prepečiatkovaná na "falošné" */
+  .stampword{position:relative;display:inline-block;font-weight:700}
+  .stampword .ov{position:absolute;left:100%;top:-0.5em;margin-left:10px;transform:rotate(-7deg);
+    font-family:var(--mono);font-weight:700;color:var(--acc);border:2.5px solid var(--acc);border-radius:5px;
+    padding:3px 9px;font-size:13px;letter-spacing:.08em;white-space:nowrap;opacity:0}
+
+  /* test */
+  .ex{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:20px 22px;margin-bottom:14px;position:relative;overflow:hidden}
+  .ex .exn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--l-soft)}
+  .ex .claim{font-family:var(--serif);font-style:italic;font-size:19px;margin:8px 0 16px;line-height:1.35}
+  .ex .acts{display:flex;gap:10px}
+  .ex button{font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;
+    border:1px solid var(--l-ink);background:transparent;color:var(--l-ink);padding:10px 18px;border-radius:8px;cursor:pointer;transition:.15s}
+  .ex button:hover{background:var(--l-ink);color:var(--l-bg)}
+  .ex .reveal{display:none;margin-top:4px}
+  .ex.done .acts{display:none}
+  .ex.done .reveal{display:block}
+  .ex .exp{margin:0;font-size:15.5px}
+  .ex .res{font-family:var(--mono);font-size:12.5px;margin-top:10px;color:var(--l-soft)}
+  .ex .stamp{position:absolute;top:18px;right:18px;font-family:var(--mono);font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;font-size:15px;padding:6px 12px;border:2.5px solid;border-radius:6px;opacity:0}
+  .ex.fake .stamp{color:var(--acc);border-color:var(--acc)}
+  .ex.real .stamp{color:var(--real);border-color:var(--real)}
+
+  /* kvíz */
+  .quiz{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:22px}
+  .q{padding:15px 0;border-top:1px solid var(--line)}
+  .q:first-of-type{border-top:none}
+  .q .qq{font-weight:700;margin-bottom:10px}
+  .q .qq .n{font-family:var(--mono);color:var(--acc);margin-right:8px}
+  .opt{display:block;width:100%;text-align:left;font-family:var(--sans);font-size:16px;color:var(--l-ink);
+    background:transparent;border:1px solid var(--line);border-radius:9px;padding:10px 14px;margin-bottom:8px;cursor:pointer;transition:.13s}
+  .opt:hover{border-color:var(--l-ink)}
+  .opt.correct{border-color:var(--real);background:#edf6f0}
+  .opt.wrong{border-color:var(--acc);background:#fdeeec}
+  .opt.dim{opacity:.45}
+  .fb{display:none;font-family:var(--serif);font-style:italic;font-size:15.5px;margin-top:10px}
+  .fb.show{display:block}.fb.ok{color:var(--real)}.fb.no{color:var(--acc)}
+
+  .ticket{border:1px dashed var(--line);border-radius:12px;background:#fffdf8;padding:20px 22px}
+  .ticket p{font-family:var(--serif);font-style:italic;color:var(--l-soft);margin:0 0 16px}
+  .ticket p:last-child{margin:0}
+
+  ol.src{padding-left:24px}
+  ol.src li{margin-bottom:10px}
+  ol.src .d{font-family:var(--mono);font-size:12.5px;color:var(--l-soft);margin-top:2px}
+
+  /* =========================================================
+     OUTRO (dark)
+     ========================================================= */
+  .outro{background:var(--d-bg);color:var(--d-ink);padding:18vh 6vw;position:relative;z-index:2}
+  .outro .q{font-family:var(--serif);font-style:italic;font-weight:500;font-size:clamp(30px,5.5vw,72px);line-height:1.1;max-width:18ch}
+  .outro .take{font-family:var(--serif);font-weight:900;font-size:clamp(40px,9vw,120px);line-height:.9;margin:8vh 0 6vh;color:var(--acc)}
+  .outro .by{font-family:var(--mono);font-size:13px;letter-spacing:.06em;color:var(--d-soft);line-height:1.9;text-transform:uppercase}
+  .outro .by b{color:var(--d-ink)}
+  .outro a.pr{color:var(--d-soft);border-bottom:1px solid var(--d-soft)}
+
+  @media (max-width:640px){
+    body{font-size:17px}
+    .s-head{grid-template-columns:1fr}.s-num{font-size:46px}
+  }
+  /* prístupnosť: vypni pohyb */
+  @media (prefers-reduced-motion:reduce){
+    .grain{animation:none;opacity:.04}
+    .glitch::before,.glitch::after{display:none}
+    .scrollhint span{animation:none}
+    .st-line{position:relative;opacity:1;margin:18px auto}
+    #statement{height:auto;display:block;padding:12vh 6vw}
+  }
+  /* ========== VRSTVENÉ EFEKTY (kapitolové predely, sketch, hotspoty, register) ========== */
+  html{--theme:#e23b2e}
+  .s-titles .lab{color:var(--theme)}
+
+  /* celoobrazovkový farebný predel medzi časťami = "color shift per chapter" */
+  .ilude{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
+    min-height:100vh;display:flex;align-items:center;padding:9vh 0;overflow:hidden;color:#fff;z-index:2;background:#b23a2b}
+  .ilude__in{max-width:1180px;width:100%;margin:0 auto;padding:0 6vw;position:relative}
+  .ilude__lab{font-family:var(--mono);font-size:13px;letter-spacing:.2em;text-transform:uppercase;opacity:.85;margin-bottom:14px}
+  .ilude__t{font-family:var(--serif);font-weight:900;font-size:clamp(40px,7vw,100px);line-height:.94;letter-spacing:-.02em;
+    transform-origin:left top;max-width:100%;word-break:keep-all;overflow-wrap:normal;hyphens:none}
+  .ilude__t .word{display:inline-block;white-space:nowrap}
+  .ilude__sub{font-family:var(--serif);font-style:italic;font-size:clamp(18px,2.6vw,30px);opacity:.9;margin-top:18px;max-width:40ch}
+  .ilude .sketch{display:block;width:min(58vw,360px);height:auto;margin:6vh 0 0;pointer-events:none;opacity:.95}
+  .sketch .dr{fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1}
+  .sketch .dot{fill:#fff;opacity:0}
+  .sketch text{fill:#fff;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.9}
+  .flip-char{display:inline-block}
+  @media (max-width:760px){
+    .ilude{height:auto;padding:16vh 0}
+    .ilude .sketch{position:static;transform:none;width:74%;margin:26px auto 0;display:block}
+  }
+
+  /* hotspot tvár = interaktívne indície */
+  .hint{font-family:var(--mono);font-size:12px;color:var(--l-soft);text-align:center;margin:6px 0 14px}
+  .hotface{position:relative;max-width:440px;margin:0 auto 22px}
+  .hotface svg{width:100%;height:auto;display:block}
+  .hotface .hs{position:absolute;width:28px;height:28px;border-radius:50%;border:2px solid var(--acc);
+    background:rgba(226,59,46,.14);color:var(--acc);font-family:var(--mono);font-weight:700;font-size:15px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translate(-50%,-50%);transition:.15s;z-index:3}
+  .hotface .hs::after{content:"";position:absolute;inset:-7px;border:1px solid var(--acc);border-radius:50%;opacity:.35;animation:hsp 2s ease-out infinite}
+  @keyframes hsp{0%{transform:scale(1);opacity:.4}100%{transform:scale(1.5);opacity:0}}
+  .hotface .hs:hover,.hotface .hs.on{background:var(--acc);color:#fff}
+  .hotface .tip{position:absolute;max-width:240px;background:#141210;color:#f3efe6;font-size:13.5px;line-height:1.45;
+    padding:11px 13px;border-radius:9px;transform:translate(-50%,0);z-index:6;display:none}
+  .hotface .tip.on{display:block}
+  .hotface .tip b{color:#ff8c7a;font-weight:700}
+
+  /* register prípadov = mriežka s detailmi v overlayi */
+  .reg{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px;margin:8px 0 6px}
+  .regcard{text-align:left;border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:16px 18px 28px;
+    cursor:pointer;transition:.18s;position:relative;font-family:var(--sans);color:var(--l-ink)}
+  .regcard:hover{border-color:var(--l-ink);transform:translateY(-2px)}
+  .regcard .rn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--acc)}
+  .regcard .rt{font-family:var(--serif);font-weight:700;font-size:18px;line-height:1.14;margin:8px 0 6px}
+  .regcard .rtag{font-family:var(--mono);font-size:11px;color:var(--l-soft);text-transform:uppercase;letter-spacing:.04em}
+  .regcard .ra{position:absolute;right:14px;bottom:10px;font-family:var(--mono);color:var(--acc)}
+
+  .ov2{position:fixed;inset:0;z-index:9500;background:rgba(10,10,12,.86);display:none;align-items:center;justify-content:center;padding:24px}
+  .ov2.on{display:flex}
+  .ov2__box{max-width:560px;width:100%;background:var(--l-bg);color:var(--l-ink);border-radius:16px;padding:32px 30px 28px;position:relative;border-top:4px solid var(--acc)}
+  .ov2__n{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--acc);text-transform:uppercase}
+  .ov2__t{font-family:var(--serif);font-weight:700;font-size:26px;line-height:1.1;margin:8px 0 14px}
+  .ov2__b{font-size:16px;line-height:1.6}
+  .ov2__b .tie{font-family:var(--mono);font-size:12px;color:var(--l-soft);text-transform:uppercase;letter-spacing:.04em;display:block;margin-top:16px}
+  .ov2__x{position:absolute;top:14px;right:16px;font-family:var(--mono);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;
+    border:1px solid var(--l-ink);border-radius:7px;padding:6px 12px;cursor:pointer;background:transparent;color:var(--l-ink)}
+  .ov2__x:hover{background:var(--l-ink);color:var(--l-bg)}
+  @media (prefers-reduced-motion:reduce){
+    .ilude{height:auto;padding:14vh 0}
+    .sketch .dr{stroke-dashoffset:0}
+    .sketch .dot{opacity:1}
+    .hotface .hs::after{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<div class="pre" id="pre" aria-hidden="true">
+  <div class="pl" id="preLabel">načítavam — 00</div>
+  <div class="pc" id="preCount">00</div>
+</div>
+
+<div id="prog"></div>
+<nav class="bar" id="nav">
+  <div class="nb">Deepfake <b>· vzorová hodina</b></div>
+  <div class="pos" id="pos">úvod</div>
+</nav>
+
+<!-- ===================== INTRO ===================== -->
+<div class="intro">
+  <canvas id="gl" aria-hidden="true"></canvas>
+  <section class="hero">
+    <div class="kick">Vzorová hodina mediálnej výchovy</div>
+    <!-- glitch→resolve = nepokojné "je to skutočné?" -->
+    <h1 class="glitch" data-text="Deepfake">Deepfake</h1>
+    <div class="sub">keď už neveríme vlastným očiam</div>
+    <div class="by">Pripravil Patrik Rosa · 9. ročník ZŠ · nový ŠVP 2023</div>
+    <div class="scrollhint"><span>↓ scrolluj</span></div>
+  </section>
+
+  <!-- pinned: tvrdenia sa dekódujú zo šumu (AI generuje z náhody) -->
+  <section id="statement">
+    <p class="st-line l1" data-scramble>Toto video nikdy nevzniklo.</p>
+    <p class="st-line l2" data-scramble>Tento hlas nikto nenahral.</p>
+    <p class="st-line l3" data-scramble>A o pár rokov to <span class="em">nerozoznáš</span>.</p>
+    <p class="st-line q l4">Komu a čomu sa dá ešte veriť, keď sa dá sfalšovať aj tvár a hlas človeka?</p>
+  </section>
+</div>
+
+<!-- ===================== LESSON ===================== -->
+<main class="lesson">
+<div class="wrap"><div class="col">
+
+  <div class="lesson__intro" data-reveal>
+    <p class="stand">Toto je vzorová hodina o syntetických médiách, dôvere a zodpovednosti — nie o tom, ako rozpoznať „jeden hoax", ale o tom, kto za to nesie zodpovednosť.</p>
+    <div class="meta">
+      <span><b>Program:</b> nový ŠVP 2023</span>
+      <span><b>Ročník:</b> 9. / 3. cyklus</span>
+      <span><b>Oblasť:</b> Človek a spoločnosť</span>
+      <span><b>Dotácia:</b> 45 min</span>
+      <span><b>Model:</b> E–U–R</span>
+    </div>
+  </div>
+
+  <!-- TEST -->
+  <section class="s" id="test">
+    <div class="s-head"><div class="s-num">→</div><div class="s-titles"><span class="lab">interaktívne</span><h2 class="st-t">Test oka: reálne, alebo deepfake?</h2></div></div>
+    <p class="dek" data-reveal>Takto sa začína hodina. Tipni si pri každom prípade a potom si odhaľ verdikt.</p>
+
+    <div class="ex" data-verdict="fake" data-reveal>
+      <div class="exn">prípad 01</div>
+      <div class="claim">„Zvuková nahrávka, na ktorej sa dvaja verejne známi ľudia dva dni pred voľbami dohadujú na sfalšovaní výsledku."</div>
+      <div class="acts"><button data-c="real">Reálne</button><button data-c="fake">Deepfake</button></div>
+      <span class="stamp">Falošné</span>
+      <div class="reveal"><p class="exp">Doložený slovenský prípad z roku 2023 — hlas vygenerovala AI, rozhovor sa nikdy neodohral (potvrdili AFP aj Demagog.sk).</p><div class="res"></div></div>
+    </div>
+    <div class="ex" data-verdict="real" data-reveal>
+      <div class="exn">prípad 02</div>
+      <div class="claim">„Aplikácia, ktorá človeku po strate hlasiviek vráti jeho vlastný hlas z dávnych nahrávok."</div>
+      <div class="acts"><button data-c="real">Reálne</button><button data-c="fake">Deepfake</button></div>
+      <span class="stamp">Reálne</span>
+      <div class="reveal"><p class="exp">Tá istá technológia klonovania hlasu, ktorá umožňuje podvody, dokáže aj toto. Preto sa nedá jednoducho „zakázať".</p><div class="res"></div></div>
+    </div>
+    <div class="ex" data-verdict="fake" data-reveal>
+      <div class="exn">prípad 03</div>
+      <div class="claim">„Video, v ktorom známa tvár nadšene odporúča investíciu, akú v skutočnosti nikdy nenakrútila."</div>
+      <div class="acts"><button data-c="real">Reálne</button><button data-c="fake">Deepfake</button></div>
+      <span class="stamp">Falošné</span>
+      <div class="reveal"><p class="exp">Bežný typ podvodu: tvár a hlas celebrity sú vygenerované, aby dodali dôveru falošnej ponuke.</p><div class="res"></div></div>
+    </div>
+    <div class="ex" data-verdict="fake" data-reveal>
+      <div class="exn">prípad 04</div>
+      <div class="claim">„Politik tvrdí, že skutočné video, na ktorom je usvedčený, je vraj len deepfake."</div>
+      <div class="acts"><button data-c="real">Reálne</button><button data-c="fake">Deepfake</button></div>
+      <span class="stamp">Falošné</span>
+      <div class="reveal"><p class="exp">Toto je <span class="k">dividenda klamára</span>: keďže falzifikáty existujú, dá sa spochybniť aj pravdivý dôkaz. Pravdu to ohrozuje z oboch strán.</p><div class="res"></div></div>
+    </div>
+    <p data-reveal>Pointa nie je naučiť sa rozoznať fake podľa chýb v obraze — kvalita rastie tak rýchlo, že to čoskoro nepôjde. <span class="k">Spoľahlivejšie je overiť zdroj.</span></p>
+  </section>
+
+  <!-- 01 -->
+  <section class="ilude" data-theme="#b23a2b" aria-label="Časť I">
+    <div class="ilude__in">
+      <div class="ilude__lab">Časť I · prečo</div>
+      <h2 class="ilude__t" data-flip>Epistemická kríza</h2>
+      <div class="ilude__sub">keď „uver vlastným očiam" prestáva platiť</div>
+      <svg class="sketch" viewBox="0 0 360 330" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <ellipse class="dr" pathLength="1" cx="180" cy="160" rx="92" ry="120"/>
+        <line class="dr" pathLength="1" x1="180" y1="44" x2="180" y2="276"/>
+        <line class="dr" pathLength="1" x1="92" y1="150" x2="268" y2="150"/>
+        <path class="dr" pathLength="1" d="M120 120 L180 150 L120 180"/>
+        <path class="dr" pathLength="1" d="M240 120 L180 150 L240 180"/>
+        <path class="dr" pathLength="1" d="M140 232 Q180 252 220 232"/>
+        <circle class="dot" cx="135" cy="130" r="3.6"/>
+        <circle class="dot" cx="225" cy="130" r="3.6"/>
+        <circle class="dot" cx="180" cy="165" r="3.6"/>
+        <circle class="dot" cx="150" cy="233" r="3.6"/>
+        <circle class="dot" cx="210" cy="233" r="3.6"/>
+        <text x="92" y="305">tvár → body → model</text>
+      </svg>
+    </div>
+  </section>
+  <section class="s" id="k01">
+    <div class="s-head"><div class="s-num">01</div><div class="s-titles"><span class="lab">koncepcia</span><h2 class="st-t">Koncepcia a zdôvodnenie</h2></div></div>
+    <p class="dek" data-reveal>Prečo som zvolil práve túto tému, tento ročník a túto formu.</p>
+    <div class="block" data-reveal><span class="h">Voľba programu</span><span class="pick">Nový ŠVP (2023), nie inovovaný ŠVP 2015</span>
+      <p>Vychádzam z nového Štátneho vzdelávacieho programu pre základné vzdelávanie, podľa ktorého budú od školského roku 2026/2027 povinne učiť všetky ZŠ. V ňom sa pôvodné prierezové témy (vrátane mediálnej výchovy) zmenili na <b>prierezové gramotnosti</b> s jasnými výstupmi na konci 3., 5. a 9. ročníka.</p>
+    </div>
+    <div class="block" data-reveal><span class="h">Cieľová skupina</span><span class="pick">9. ročník (koniec 3. cyklu)</span>
+      <p>Vek 14–15 rokov je kritický: sú to najintenzívnejší používatelia krátkych videí a AI, práve tu pribúda rovesnícke zneužívanie a je to záverečný cyklus, na konci ktorého sa výstupy mediálnej gramotnosti overujú. Žiaci sú už zrelí na etické dilemy.</p>
+    </div>
+    <div class="block" data-reveal><span class="h">Téma a jej problémovosť</span><span class="pick">Deepfake — zámerne nie „over si zdroj"</span>
+      <p>Klasická mediálna výchova často zostáva pri ošúchanom „over si zdroj". Táto hodina ide ku skutočne spornému jadru:</p>
+      <ul>
+        <li><b>Epistemická kríza</b> — ak sa dá sfalšovať aj video a hlas, prestáva platiť „uver vlastným očiam".</li>
+        <li><b>Dividenda klamára</b> — keď falzifikáty existujú, dá sa aj pravdivý dôkaz označiť za falošný. Pravda je ohrozená z oboch strán.</li>
+        <li><b>Dvojsečnosť technológie</b> — tá istá AI vráti hlas chorému aj umožní podvod. Niet jasnej hranice, „zakázať" nestačí.</li>
+        <li><b>Rozptýlená zodpovednosť</b> — kto je vinný? Autor, šíritelia, platforma, štát? Otázka bez učebnicovej odpovede.</li>
+      </ul>
+    </div>
+    <div class="block" data-reveal><span class="h">Forma realizácie</span><span class="pick">Oblasť Človek a spoločnosť + mediálna gramotnosť</span>
+      <p>Hodinu realizujem v oblasti Človek a spoločnosť (občiansky komponent), pričom rozvíjam mediálnu gramotnosť (v novom ŠVP je súčasťou občianskej gramotnosti). Téma má jadro v hodnotách, dôvere a spolužití — teda v občiansko-etickom rozmere — a metódy preberá z mediálnej výchovy. Ponúkam aj 90-minútový blokový variant.</p>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section class="s" id="k02">
+    <div class="s-head"><div class="s-num">02</div><div class="s-titles"><span class="lab">ukotvenie</span><h2 class="st-t">Ukotvenie v ŠVP</h2></div></div>
+    <p class="dek" data-reveal>Mediálna gramotnosť je v novom ŠVP súčasťou občianskej gramotnosti.</p>
+    <p data-reveal>Je to schopnosť porozumieť médiám, kriticky vyhodnocovať obsahy a vedome ich vytvárať — vrátane rozpoznávania manipulácie a reklamy, rozlišovania faktov a názorov a bezpečnej komunikácie. Ukotvená je v oblasti <b>Človek a spoločnosť</b> a aj v oblasti <b>Jazyk a komunikácia</b>. Hodina pritom rozvíja aj ďalšie gramotnosti naraz (digitálnu/AI, čitateľskú, sociálno-emocionálnu) a dva nadpredmetové koncepty nového ŠVP: <b>Charakter</b> (hodnoty, súhlas, zodpovednosť) a <b>Metakognícia</b> (premýšľanie o tom, ako vlastne viem, čo je pravda).</p>
+    <h3 data-reveal>Čo má žiak na konci 3. cyklu vedieť — a čo táto hodina napĺňa</h3>
+    <ol class="list" data-reveal>
+      <li><b>Kriticky a rozlišujúco pristupovať k médiám</b> vrátane sociálnych sietí, reklamy a marketingu.</li>
+      <li><b>Interpretovať mediálne obsahy a odhaľovať manipulatívne techniky.</b></li>
+      <li><b>Správať sa eticky, bezpečne a zodpovedne</b> ako konzument aj tvorca v mediálnom prostredí.</li>
+    </ol>
+    <p class="small" data-reveal>Obsahové komponenty: Informačné zdroje a médiá · Sociálne siete · Mediálne účinky a komunikácia. Digitálna gramotnosť (vrátane používania AI) je v ŠVP samostatná prierezová gramotnosť.</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="s" id="k03">
+    <div class="s-head"><div class="s-num">03</div><div class="s-titles"><span class="lab">ciele</span><h2 class="st-t">Ciele hodiny</h2></div></div>
+    <p class="pull" data-reveal>Žiak kriticky posúdi dôveryhodnosť obsahu vytvoreného AI, vysvetlí riziká a etické dilemy jeho šírenia a sformuluje vlastný zodpovedný postoj.</p>
+    <h3 data-reveal>Kognitívne — žiak vie</h3>
+    <ul data-reveal>
+      <li>vysvetliť, čo je deepfake a na akom princípe vzniká (na úrovni princípu, <b>nie návodu</b>);</li>
+      <li>rozlíšiť neškodné a škodlivé využitie na konkrétnych príkladoch;</li>
+      <li>vysvetliť <b>dividendu klamára</b> a prečo ohrozuje pravdu z oboch strán.</li>
+    </ul>
+    <h3 data-reveal>Postojové — žiak</h3>
+    <ul data-reveal>
+      <li>zaujme kritický, no <b>nie cynický</b> postoj;</li>
+      <li>uvedomí si dopad nekonsenzuálneho deepfake a ocení hodnotu súhlasu a pravdy;</li>
+      <li>v diskusii rešpektuje odlišný názor a oddelí ho od osoby.</li>
+    </ul>
+    <h3 data-reveal>Zručnostné — žiak dokáže</h3>
+    <ul data-reveal>
+      <li>aplikovať postupy overovania: <b>laterálne čítanie</b>, spätné vyhľadávanie obrázkov, hľadanie pôvodného zdroja;</li>
+      <li>pomenovať 3 indície syntetického obsahu — a vysvetliť, prečo samotné indície nestačia;</li>
+      <li>argumentovať a obhájiť pozíciu vecnými dôvodmi.</li>
+    </ul>
+  </section>
+
+  <!-- 04 -->
+  <section class="s" id="k04">
+    <div class="s-head"><div class="s-num">04</div><div class="s-titles"><span class="lab">pojmy</span><h2 class="st-t">Kľúčové pojmy</h2></div></div>
+    <p class="dek" data-reveal>Pojmy preberáme priebežne počas aktivít, nie ako úvodný diktát.</p>
+    <p data-reveal><b>Deepfake</b> — syntetický audiovizuálny obsah vytvorený alebo upravený AI tak, aby pôsobil reálne (tvár alebo hlas, ktorý dané slová nikdy nepovedal).</p>
+    <p data-reveal><b>Generatívna AI / syntetické médiá</b> — umelá inteligencia, ktorá z naučených vzorov vytvára nový obsah (text, obraz, zvuk, video).</p>
+    <p data-reveal><b>Manipulácia</b> — zámerné ovplyvňovanie klamlivými či skrytými prostriedkami. <i>Dezinformácia</i> = úmyselná nepravda, <i>misinformácia</i> = neúmyselné šírenie nepravdy.</p>
+    <p data-reveal><b>Súhlas (konsent)</b> — slobodný a informovaný súhlas s použitím podoby, hlasu či údajov. Jeho absencia je jadrom škodlivosti väčšiny deepfake.</p>
+    <p data-reveal><b class="k">Dividenda klamára</b> — keď samotná existencia falzifikátov umožní označiť aj pravdivý dôkaz za „deepfake" a uniknúť zodpovednosti.</p>
+    <p data-reveal><b>Laterálne čítanie</b> — overovanie tak, že opustím podozrivý príspevok a hľadám, čo o zdroji píšu dôveryhodní iní; doplnené spätným vyhľadávaním obrázkov.</p>
+  </section>
+
+  <!-- 05 -->
+  <section class="s" id="k05">
+    <div class="s-head"><div class="s-num">05</div><div class="s-titles"><span class="lab">metódy</span><h2 class="st-t">Metódy, formy a pomôcky</h2></div></div>
+    <p data-reveal><b>Metódy:</b> motivačný rozhovor, problémová metóda, riadená diskusia, analýza ukážok, kooperatívne učenie, prípadová štúdia, zaujímanie pozície (názorová os), reflexívne písanie.</p>
+    <p data-reveal><b>Organizačné formy:</b> krátka frontálna fáza → ťažisková skupinová práca → individuálna reflexia.</p>
+    <p data-reveal><b>Didaktický model:</b> E – U – R (evokácia → uvedomenie si významu → reflexia) z programu kritického myslenia.</p>
+    <p data-reveal><b>Pomôcky:</b> projektor alebo tabuľa, <b>vopred preverené, verejne známe ukážky</b>, pracovný list s kartami prípadov, lepiace lístky, vyznačená názorová os, voliteľne mobil (BYOD) na nácvik overovania.</p>
+  </section>
+
+  <!-- 06 -->
+  <section class="ilude" data-theme="#b07d12" aria-label="Časť II">
+    <div class="ilude__in">
+      <div class="ilude__lab">Časť II · hodina</div>
+      <h2 class="ilude__t" data-flip>Priebeh hodiny</h2>
+      <div class="ilude__sub">evokácia → uvedomenie → reflexia</div>
+      <svg class="sketch" viewBox="0 0 380 220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line class="dr" pathLength="1" x1="30" y1="105" x2="350" y2="105"/>
+        <circle class="dr" pathLength="1" cx="60" cy="105" r="24"/>
+        <circle class="dr" pathLength="1" cx="190" cy="105" r="24"/>
+        <circle class="dr" pathLength="1" cx="320" cy="105" r="24"/>
+        <text x="53" y="111">E</text><text x="183" y="111">U</text><text x="313" y="111">R</text>
+        <text x="44" y="168">10 min</text><text x="172" y="168">25 min</text><text x="302" y="168">10 min</text>
+      </svg>
+    </div>
+  </section>
+  <section class="s" id="k06">
+    <div class="s-head"><div class="s-num">06</div><div class="s-titles"><span class="lab">priebeh · 45 min</span><h2 class="st-t">Priebeh hodiny</h2></div></div>
+    <p class="dek" data-reveal>Štruktúra podľa modelu E – U – R.</p>
+    <div class="phase" data-reveal>
+      <div class="ph"><span class="L">E</span><span class="nm">Evokácia</span><span class="t">~10 min</span></div>
+      <p><span class="mins">0–6′</span> &nbsp;<b>Hlasovacia hra.</b> Učiteľ premieta 4–5 ukážok; po každej žiaci okamžite hlasujú: skutočné, či AI? Učiteľ odhalí odpoveď. Ide o to, aby žiakov prekvapilo, že to nedokážu spoľahlivo rozlíšiť.</p>
+      <p><span class="mins">6–10′</span> &nbsp;<b>Rozhovor + otázka hodiny.</b> „Ako ste sa cítili, keď ste sa pomýlili?" Učiteľ napíše na tabuľu otázku hodiny:</p>
+      <p class="pull" style="font-size:clamp(20px,3vw,28px);margin:6px 0 0">„Komu a čomu môžeme ešte veriť, keď sa dá sfalšovať aj video a hlas?"</p>
+    </div>
+    <div class="phase" data-reveal>
+      <div class="ph"><span class="L">U</span><span class="nm">Uvedomenie si významu</span><span class="t">~25 min</span></div>
+      <p><span class="mins">10–15′</span> &nbsp;<b>Mini-výklad: princíp a spektrum.</b> Stručne: AI sa naučí tvár/hlas z dát a vygeneruje nový obsah. <b>Bez návodu.</b> Na tabuli vzniká spektrum využitia:</p>
+      <!-- spektrum: bod putuje s tvojím scrollom -->
+      <div id="spectrum">
+        <div class="spec-track"><div class="spec-dot" id="specDot"></div></div>
+        <div class="spec-ends"><span class="l">neškodné</span><span class="r">škodlivé</span></div>
+        <div class="spec-read" id="specRead">dabing, satira, hlas po chorobe</div>
+      </div>
+      <p><span class="mins">15–27′</span> &nbsp;<b>Skupinová práca — prípady.</b> 4 skupiny, každá jedna karta (sekcia 07). Otázky: kto je poškodený, kto nesie zodpovednosť, čo robiť. Role: hovorca, zapisovateľ, časomerač, advokát opačného názoru. Učiteľ nehodnotí „správnosť" postoja.</p>
+      <p><span class="mins">27–35′</span> &nbsp;<b>Zdieľanie + nácvik overovania.</b> Skupiny prezentujú; učiteľ zapisuje motívy (súhlas, dôvera, zodpovednosť, dôkaz). Spoločný nácvik: laterálne čítanie, spätné vyhľadávanie obrázkov, hľadanie zdroja. <span class="k">Dôraz: over zdroj, nie chyby v obraze.</span></p>
+    </div>
+    <div class="phase" data-reveal>
+      <div class="ph"><span class="L">R</span><span class="nm">Reflexia</span><span class="t">~10 min</span></div>
+      <p><span class="mins">35–40′</span> &nbsp;<b>Názorová os.</b> Učiteľ číta provokatívne tvrdenia (sekcia 08); žiaci zaujmú pozíciu a 2–3 ju zdôvodnia.</p>
+      <p><span class="mins">40–45′</span> &nbsp;<b>Exit ticket.</b> Každý dopíše tri vety a odovzdá. Hodina nesmie skončiť beznádejou — záver je konštruktívny.</p>
+    </div>
+  </section>
+
+  <!-- 07 -->
+  <section class="ilude" data-theme="#2c5277" aria-label="Časť III">
+    <div class="ilude__in">
+      <div class="ilude__lab">Časť III · prípady</div>
+      <h2 class="ilude__t" data-flip>Štyri prípady</h2>
+      <div class="ilude__sub">voľby · spolužiačka · dividenda klamára · dvojsečnosť</div>
+      <svg class="sketch" viewBox="0 0 380 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polyline class="dr" pathLength="1" points="10,100 40,100 55,58 70,142 85,28 100,172 115,68 130,122 150,100 175,100 190,52 205,150 220,78 235,122 255,100 290,100 305,72 320,128 340,100 370,100"/>
+        <text x="10" y="184">vygenerovaný hlas</text>
+      </svg>
+    </div>
+  </section>
+  <section class="s" id="k07">
+    <div class="s-head"><div class="s-num">07</div><div class="s-titles"><span class="lab">prípady</span><h2 class="st-t">Prípadové štúdie</h2></div></div>
+    <p class="dek" data-reveal>Štyri roviny problému — demokratická, medziľudská, epistemická a eticko-regulačná.</p>
+    <div class="case" data-reveal>
+      <div class="ti"><span class="id">A.</span>Deepfake pred voľbami — reálny slovenský prípad (2023)</div>
+      <p>Dva dni pred parlamentnými voľbami 2023, počas <b>volebného moratória</b>, sa šírila falošná zvuková nahrávka. Mali na nej znieť hlasy lídra PS a novinárky Denníka N tak, akoby sa <b>dohovárali na zmanipulovaní volieb</b>. Taký rozhovor sa nikdy neodohral. Overovatelia (AFP, Demagog.sk) potvrdili, že hlas je vygenerovaný AI.</p>
+      <p>Nahrávka zneužila dve medzery: moratórium a vtedajšie pravidlá Meta, ktoré platili len pre falošné video, nie zvuk — preto ju nezmazali. Jeden z prvých prípadov, keď deepfake zasiahol do volieb. Autora sa nepodarilo nájsť.</p>
+      <p class="q-ask">Otázky: Prečo bol čas (moratórium) taký nebezpečný? Čo to znamená pre demokraciu, ak voliči nerozlíšia pravdu od podvrhu? Kto mal nahrávku odstrániť? Bola nekvalitná — prečo na nej aj tak záleží?</p>
+    </div>
+    <div class="case" data-reveal>
+      <div class="ti"><span class="id">B.</span>Spolužiačka — keď sa terčom stane konkrétny človek</div>
+      <p>Niekto pomocou aplikácie vytvorí falošné video, kde spolužiačka „hovorí" niečo ponižujúce, a rozošle ho po škole. Časť spolužiakov uverí. Dievča je zničené.</p>
+      <div class="callout"><b>Poznámka pre učiteľa:</b> najzávažnejšou rastúcou formou je tvorba intímnych/sexuálnych deepfake spolužiakov. Ide o <b>trestný čin a sexuálne zneužívanie</b>. Na hodine sa o tom hovorí citlivo, bez ukážok, s dôrazom na pomoc obeti. Modelový prípad preto formulujeme nesexuálne.</div>
+      <p class="q-ask">Otázky: Kto všetko je poškodený? Kto nesie zodpovednosť — autor, šíritelia, platforma? Je „veď to bola sranda" prijateľné? Čo má urobiť obeť, svedkovia a škola? Kde hľadať pomoc?</p>
+    </div>
+    <div class="case" data-reveal>
+      <div class="ti"><span class="id">C.</span>Dividenda klamára — keď sa dá poprieť aj pravda</div>
+      <p>Politik je zachytený na <span class="stampword" id="liar">skutočnom videu<span class="ov">FALOŠNÉ?</span></span>, ako preberá úplatok. Vyhlási však, že ide o deepfake — a unikne zodpovednosti. Verejnosť už nevie, čomu veriť.</p>
+      <p class="q-ask">Otázky: Ako môže deepfake ublížiť pravde, aj keď nič nie je sfalšované? Čo sa stane s dôkazmi a súdmi, ak „čokoľvek môže byť falošné"? Ako si zachovať dôveru v pravdivé dôkazy a neprepadnúť skepse?</p>
+    </div>
+    <div class="case" data-reveal>
+      <div class="ti"><span class="id">D.</span>Dvojsečná technológia — kde je hranica?</div>
+      <p>Tá istá AI na klonovanie hlasu umožní človeku po strate hlasu znova hovoriť vlastným hlasom. No rovnaká technológia umožní podvodníkom napodobniť hlas „babičky" a štúdiám „oživiť" zosnulých hercov.</p>
+      <p class="q-ask">Otázky: Dá sa / má sa zakázať? Kde je hranica a kto ju má určiť (tvorcovia, firmy, štát, EÚ)? Vyrieši to povinné označovanie AI obsahu (ako už žiada EÚ)?</p>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section class="s" id="k08">
+    <div class="s-head"><div class="s-num">08</div><div class="s-titles"><span class="lab">reflexia</span><h2 class="st-t">Reflexívne nástroje</h2></div></div>
+    <h3 data-reveal>Názorová os — tvrdenia (nesúhlasím ↔ súhlasím)</h3>
+    <ul data-reveal>
+      <li>„Deepfake technológia by sa mala úplne zakázať."</li>
+      <li>„Kto deepfake zdieľa ďalej, je rovnako zodpovedný ako autor."</li>
+      <li>„Ak je to len vtip alebo paródia, nikomu to neublíži."</li>
+      <li>„Siete majú povinnosť zmazať každý škodlivý deepfake do hodiny."</li>
+      <li>„Onedlho už nebude možné veriť žiadnemu videu na internete."</li>
+    </ul>
+    <h3 data-reveal>Exit ticket</h3>
+    <div class="ticket" data-reveal>
+      <p>Najviac ma dnes prekvapilo…</p>
+      <p>Keď nabudúce uvidím šokujúce video, predtým než tomu uverím alebo to pošlem ďalej, urobím…</p>
+      <p>Jedna vec, ktorú s deepfake nikdy neurobím, je…</p>
+    </div>
+    <h3 data-reveal>Mini-kontrola porozumenia <span class="small">(klikni na odpoveď)</span></h3>
+    <div class="quiz" data-reveal>
+      <div class="q" data-correct="1"><div class="qq"><span class="n">1.</span>Čo najlepšie vystihuje „dividendu klamára"?</div>
+        <button class="opt">Deepfake sa dá vyrobiť úplne zadarmo.</button>
+        <button class="opt">Keďže falzifikáty existujú, dá sa aj pravdivý dôkaz označiť za falošný.</button>
+        <button class="opt">Klamári na sieťach zarábajú peniaze.</button>
+        <div class="fb"></div>
+      </div>
+      <div class="q" data-correct="2"><div class="qq"><span class="n">2.</span>Najspoľahlivejší prvý krok pri šokujúcom videu?</div>
+        <button class="opt">Hneď ho pošlem priateľom.</button>
+        <button class="opt">Hľadám chyby priamo v obraze — to vždy stačí.</button>
+        <button class="opt">Overím zdroj (laterálne čítanie) a počkám na overovateľov.</button>
+        <div class="fb"></div>
+      </div>
+      <div class="q" data-correct="0"><div class="qq"><span class="n">3.</span>Kto nesie zodpovednosť, keď sa škodlivý deepfake šíri?</div>
+        <button class="opt">Môže byť rozdelená — autor, šíritelia aj platforma.</button>
+        <button class="opt">Iba autor; ostatní s tým nemajú nič.</button>
+        <button class="opt">Nikto — na internete si každý robí, čo chce.</button>
+        <div class="fb"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section class="ilude" data-theme="#2d6a48" aria-label="Časť IV">
+    <div class="ilude__in">
+      <div class="ilude__lab">Časť IV · zodpovednosť</div>
+      <h2 class="ilude__t" data-flip>Etika a zodpovednosť</h2>
+      <div class="ilude__sub">over zdroj, nie obraz</div>
+      <svg class="sketch" viewBox="0 0 320 290" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle class="dr" pathLength="1" cx="140" cy="120" r="78"/>
+        <line class="dr" pathLength="1" x1="196" y1="176" x2="272" y2="252"/>
+        <path class="dr" pathLength="1" d="M104 122 L132 150 L186 92"/>
+        <text x="62" y="276">overuj zdroj</text>
+      </svg>
+    </div>
+  </section>
+  <section class="s" id="k09">
+    <div class="s-head"><div class="s-num">09</div><div class="s-titles"><span class="lab">hodnotenie</span><h2 class="st-t">Hodnotenie</h2></div></div>
+    <p class="dek" data-reveal>Prevažne formatívne, bez známky — nový ŠVP kladie dôraz na to, či žiak vie vedomosti použiť, nie na memorovanie.</p>
+    <h3 data-reveal>Nástroje</h3>
+    <ul data-reveal>
+      <li>Pozorovanie kvality argumentov v skupinovej práci a na názorovej osi.</li>
+      <li>Analýza exit ticketov ako podklad pre slovnú spätnú väzbu.</li>
+      <li>Voliteľne krátka sebahodnotiaca škála.</li>
+    </ul>
+    <h3 data-reveal>Kritériá úspechu — žiak</h3>
+    <ul data-reveal>
+      <li>vysvetlí, čo je deepfake, a uvedie škodlivé aj neškodné použitie;</li>
+      <li>pomenuje 2–3 postupy alebo indície na posúdenie dôveryhodnosti;</li>
+      <li>zaujme zdôvodnený postoj a obháji ho argumentom;</li>
+      <li>v diskusii vecne reaguje a rešpektuje odlišný názor.</li>
+    </ul>
+  </section>
+
+  <!-- 10 -->
+  <section class="s" id="k10">
+    <div class="s-head"><div class="s-num">10</div><div class="s-titles"><span class="lab">etika</span><h2 class="st-t">Etika, úskalia a inklúzia</h2></div></div>
+    <p class="dek" data-reveal>Citlivá téma — premyslená hodina má ochranné mantinely. Nie je to formalita, ale učiteľská etika.</p>
+    <h3 data-reveal>Etické zásady a úskalia</h3>
+    <ul data-reveal>
+      <li>Hodina <b>neučí vytvárať</b> deepfake — cieľom je rozpoznávanie, kritika a etika.</li>
+      <li><b>Nikdy</b> nepoužívať podobu ani meno reálnych žiakov a žiadne sexuálne, násilné či ponižujúce ukážky; len verejne známe, už označené prípady.</li>
+      <li>Pri prípade B citlivo pomenovať, že intímne deepfake neplnoletých sú trestný čin — bez ukážok, s dôrazom na pomoc.</li>
+      <li>Ak by v triede bola obeť, pristupovať k nej s empatiou a podporou, nie ako k senzácii.</li>
+      <li>Hodinu <b>neuzavrieť cynicky</b> — overovanie a zodpovednosť majú zmysel.</li>
+    </ul>
+    <div class="callout b" data-reveal><b>Kam odkázať na pomoc:</b> školský psychológ · IPčko.sk (0800 500 333) · Linka detskej istoty 116 111 · nahlasovanie nezákonného obsahu Stopline.sk.</div>
+    <h3 data-reveal>Diferenciácia a inklúzia</h3>
+    <ul data-reveal>
+      <li>Karty prípadov v dvoch úrovniach náročnosti; možnosť odpovedať aj kresbou.</li>
+      <li>Predčítanie, dlhší čas, vizuálne opory; titulky a slúchadlá pri ukážkach; žiadne blikajúce efekty.</li>
+      <li>Zmiešané skupiny s jasnými rolami; jazyková podpora pre žiakov s iným materinským jazykom.</li>
+    </ul>
+    <div class="hint" data-reveal>↓ klikni na body na tvári — ukážu typickú indíciu (a prečo nestačí)</div>
+    <div class="hotface" data-reveal>
+      <svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <ellipse cx="200" cy="150" rx="96" ry="126" fill="none" stroke="#d8d2c4" stroke-width="1.6"/>
+        <circle cx="165" cy="130" r="11" fill="none" stroke="#d8d2c4" stroke-width="1.6"/>
+        <circle cx="235" cy="130" r="11" fill="none" stroke="#d8d2c4" stroke-width="1.6"/>
+        <path d="M168 202 Q200 220 232 202" fill="none" stroke="#d8d2c4" stroke-width="1.6"/>
+        <path d="M200 150 L200 178" fill="none" stroke="#d8d2c4" stroke-width="1.6"/>
+      </svg>
+      <button class="hs" style="left:41.25%;top:43.3%" data-tip="<b>Oči a žmurkanie:</b> príliš pravidelný, zriedkavý alebo chýbajúci žmurk. Ale novšie modely to už zvládajú.">1</button>
+      <button class="hs" style="left:50%;top:70%" data-tip="<b>Pery a zvuk:</b> pery nesedia s hláskami, mimika je „mŕtva". Ale synchronizácia sa rýchlo zlepšuje.">2</button>
+      <button class="hs" style="left:74%;top:18%" data-tip="<b>Okraje tváre a vlasy:</b> rozmazané prechody, blikajúce kontúry. Ale pri kvalitnom videu zmiznú.">3</button>
+      <button class="hs" style="left:23%;top:24%" data-tip="<b>Svetlo a tiene:</b> osvetlenie tváre nesedí s pozadím. Ale dá sa dorobiť.">4</button>
+      <div class="tip" id="facetip"></div>
+    </div>
+    <h3 data-reveal>Indície možného deepfake — a prečo nestačia</h3>
+    <ul data-reveal>
+      <li>nezvyčajná mimika a žmurkanie; nesedia okraje tváre, vlasy, zuby;</li>
+      <li>divné svetlo a tiene; nesúlad pier a zvuku; plochý hlas;</li>
+      <li>chýba pôvodný zdroj; šíri sa anonymne v napätom čase;</li>
+      <li>obsah „príliš dokonale" potvrdzuje, čomu chceme veriť.</li>
+    </ul>
+    <p data-reveal><b>Dôležité:</b> kvalita deepfake rýchlo rastie, preto sa na vizuálne chyby nedá spoliehať. <span class="k">Spoľahlivejšie je overiť zdroj.</span></p>
+  </section>
+
+  <!-- 11 -->
+  <section class="s" id="register">
+    <div class="s-head"><div class="s-num">⊞</div><div class="s-titles"><span class="lab">register</span><h2 class="st-t">Register reálnych prípadov</h2></div></div>
+    <p class="dek" data-reveal>Toto nie je sci-fi. Klikni na prípad a otvor detail.</p>
+    <div class="reg" data-reveal>
+      <button class="regcard" data-n="01" data-t="Predvolebné audio (SK, 2023)" data-tag="demokracia" data-tie="súvis: prípad A · sekcia 07" data-b="Dva dni pred parlamentnými voľbami 2023, počas moratória, sa šírila falošná zvuková nahrávka s hlasmi lídra PS a novinárky Denníka N. Taký rozhovor sa nikdy neodohral — hlas vygenerovala AI (potvrdili AFP aj Demagog.sk).">
+        <div class="rn">01</div><div class="rt">Predvolebné audio (SK, 2023)</div><div class="rtag">demokracia</div><div class="ra">↗</div></button>
+      <button class="regcard" data-n="02" data-t="Investičný podvod s tvárou celebrity" data-tag="podvod" data-tie="súvis: prípad 03 (test) · pojem manipulácia" data-b="Rozšírený typ podvodu: tvár a hlas známej osobnosti sú vygenerované tak, aby dodali dôveru falošnej investičnej ponuke. Cieľom je vylákať peniaze od ľudí, ktorí uveria „odporúčaniu".">
+        <div class="rn">02</div><div class="rt">Investičný podvod s tvárou celebrity</div><div class="rtag">podvod</div><div class="ra">↗</div></button>
+      <button class="regcard" data-n="03" data-t="Intímne deepfake spolužiakov" data-tag="trestný čin" data-tie="súvis: prípad B · sekcia 10" data-b="Najzávažnejšia rastúca forma medzi mladými: vytváranie falošných intímnych obrazov konkrétnej osoby bez jej súhlasu. Ide o trestný čin a formu sexuálneho zneužívania. Pomoc: IPčko 0800 500 333, Linka detskej istoty 116 111.">
+        <div class="rn">03</div><div class="rt">Intímne deepfake spolužiakov</div><div class="rtag">trestný čin</div><div class="ra">↗</div></button>
+      <button class="regcard" data-n="04" data-t="Dividenda klamára" data-tag="popretie pravdy" data-tie="súvis: prípad C · pojem dividenda klamára" data-b="Keďže falzifikáty existujú, dá sa aj pravdivý dôkaz označiť za „deepfake" a uniknúť zodpovednosti. Pravdu to ohrozuje aj vtedy, keď sa v skutočnosti nič nesfalšovalo.">
+        <div class="rn">04</div><div class="rt">Dividenda klamára</div><div class="rtag">popretie pravdy</div><div class="ra">↗</div></button>
+      <button class="regcard" data-n="05" data-t="Klonovaný hlas: pomoc aj zneužitie" data-tag="dvojsečnosť" data-tie="súvis: prípad D · pojem dvojsečnosť" data-b="Tá istá technológia vráti hlas človeku po strate hlasiviek — a zároveň umožní napodobniť hlas príbuzného či „oživiť" zosnulých hercov. Niet jednoznačnej hranice medzi dobrým a zlým použitím.">
+        <div class="rn">05</div><div class="rt">Klonovaný hlas: pomoc aj zneužitie</div><div class="rtag">dvojsečnosť</div><div class="ra">↗</div></button>
+      <button class="regcard" data-n="06" data-t="Podvod „vnuk v núdzi"" data-tag="podvod" data-tie="súvis: pojem manipulácia · sekcia 07" data-b="Podvodníci naklonujú hlas príbuzného a zavolajú s naliehavou prosbou o peniaze. Stačí im krátka vzorka hlasu z videa na internete.">
+        <div class="rn">06</div><div class="rt">Podvod „vnuk v núdzi"</div><div class="rtag">podvod</div><div class="ra">↗</div></button>
+    </div>
+    <p class="small" data-reveal>Zoznam je ilustračný a vychádza z doložených prípadov a typov; slúži na uvedomenie rozsahu, nie ako úplný prehľad.</p>
+  </section>
+  <section class="s" id="k11">
+    <div class="s-head"><div class="s-num">11</div><div class="s-titles"><span class="lab">zdroje</span><h2 class="st-t">Zdroje a materiály</h2></div></div>
+    <ol class="src" data-reveal>
+      <li><a href="https://ucime.vzdelavanie21.sk/prierezove-gramotnosti-rozdelenie/obcianska-gramotnost/medialna-gramotnost/" target="_blank" rel="noopener">ŠVP / NIVAM — Mediálna gramotnosť</a><div class="d">Výstupy mediálnej gramotnosti na konci 3. cyklu.</div></li>
+      <li><a href="https://ucime.vzdelavanie21.sk/prierezove-gramotnosti-rozdelenie/digitalna-gramotnost/" target="_blank" rel="noopener">NIVAM — Digitálna gramotnosť (AI)</a><div class="d">Samostatná prierezová gramotnosť.</div></li>
+      <li><a href="https://medialnavychova.sk/" target="_blank" rel="noopener">medialnavychova.sk</a><div class="d">Centrum mediálnej gramotnosti (IMEC), FMK UCM v Trnave.</div></li>
+      <li><a href="https://demagog.sk/" target="_blank" rel="noopener">Demagog.sk</a><div class="d">Overovanie faktov; analýza predvolebného deepfake (prípad A).</div></li>
+      <li><a href="https://svetmedii.info/otevrena-ucebnice/" target="_blank" rel="noopener">Svět médií</a><div class="d">Otvorená učebnica mediálnej výchovy (CZ).</div></li>
+      <li><a href="https://e-bezpeci.cz/medialnivychova/" target="_blank" rel="noopener">e-bezpeci.cz</a><div class="d">Metodický portál UP v Olomouci.</div></li>
+      <li><a href="https://dennikn.sk/3919212/nastava-chvila-na-predvolebne-hoaxy-je-tu-moratorium/" target="_blank" rel="noopener">Denník N / AFP — predvolebný deepfake 2023</a><div class="d">Zdrojové reportáže k prípadu A.</div></li>
+    </ol>
+    <p class="small" data-reveal>Odkazy slúžia na prípravu učiteľa a sú voľne dostupné. Ukážky pre evokáciu si učiteľ vyberá a preveruje vopred podľa zásad zo sekcie 10.</p>
+  </section>
+
+</div></div>
+</main>
+
+<!-- ===================== OUTRO ===================== -->
+<footer class="outro">
+  <p class="q" data-reveal>Komu a čomu sa dá ešte veriť?</p>
+  <!-- dekódovanie = z chaosu sa vynára použiteľné ponaučenie -->
+  <div class="take" data-scramble>Over zdroj.</div>
+  <p class="by">
+    Vzorová hodina mediálnej výchovy · téma <b>Deepfake</b><br>
+    9. ročník ZŠ / 3. cyklus · nový ŠVP 2023 · model E–U–R<br>
+    Pripravil <b>Patrik Rosa</b> · 2026 &nbsp;·&nbsp; <a class="pr" href="javascript:window.print()">verzia pre tlač</a>
+  </p>
+</footer>
+
+<script>
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- preloader ---------- */
+(function(){
+  const pre=document.getElementById('pre'), c=document.getElementById('preCount'), l=document.getElementById('preLabel');
+  let n=0; const step=()=>{ n+=Math.floor(Math.random()*18)+6; if(n>100)n=100;
+    const txt = n<100 ? String(n).padStart(2,'0') : '100';
+    c.textContent = txt;
+    l.textContent = 'načítavam — '+txt;
+    if(n<100) setTimeout(step,90+Math.random()*120);
+  };
+  if(RM){ pre.style.display='none'; }
+  else { step(); }
+  const hide=()=>{ if(!window.gsap){ pre.style.display='none'; return; }
+    gsap.to(pre,{yPercent:-100,duration:0.9,ease:'power3.inOut',delay:0.2,onComplete:()=>pre.style.display='none'}); };
+  window.addEventListener('load',()=>setTimeout(hide, RM?0:600));
+  setTimeout(hide, 4000); // poistka
+})();
+
+/* ---------- decode-from-noise (AI generuje z náhody) ---------- */
+function scramble(el){
+  const fin = (el.dataset.text!=null?el.dataset.text:el.textContent);
+  el.dataset.text = fin;
+  if(RM){ el.textContent=fin; return; }
+  const pool='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@%&/<>*¦';
+  const t0=performance.now(), dur=1100;
+  (function tick(now){
+    const p=Math.min((now-t0)/dur,1), reveal=p*fin.length*1.35;
+    let out='';
+    for(let i=0;i<fin.length;i++){ const ch=fin[i];
+      out += ch===' ' ? ' ' : (i<reveal?ch:pool[(Math.random()*pool.length)|0]); }
+    el.textContent=out;
+    if(p<1) requestAnimationFrame(tick); else el.textContent=fin;
+  })(performance.now());
+}
+
+/* ---------- interaktívny TEST: klik = rozsudok o pravosti (pečiatka) ---------- */
+document.querySelectorAll('.ex').forEach(ex=>{
+  const v=ex.getAttribute('data-verdict'), stamp=ex.querySelector('.stamp');
+  ex.querySelectorAll('[data-c]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      if(ex.classList.contains('done'))return;
+      const right=b.getAttribute('data-c')===v;
+      ex.classList.add('done',v);
+      ex.querySelector('.res').textContent = right ? 'tvoj tip: trafil si' : 'tvoj tip: vedľa — a presne v tom je pointa';
+      if(window.gsap && !RM){ gsap.fromTo(stamp,{scale:2.4,rotation:0,opacity:0},{scale:1,rotation:v==='real'?5:-8,opacity:.95,duration:.45,ease:'back.out(2)'}); }
+      else { stamp.style.opacity=.95; stamp.style.transform='rotate(-8deg)'; }
+    });
+  });
+});
+
+/* ---------- kvíz ---------- */
+const QEXP=[
+  'Dividenda klamára: keď ľudia vedia o falzifikátoch, dá sa spochybniť aj skutočný dôkaz.',
+  'Vizuálne chyby sa falšujú čoraz lepšie — najistejšie je overiť zdroj a počkať na overovateľov.',
+  'Zodpovednosť býva rozdelená: autor, šíritelia aj platforma.'
+];
+document.querySelectorAll('.q').forEach((item,qi)=>{
+  const correct=parseInt(item.getAttribute('data-correct'),10);
+  const opts=[...item.querySelectorAll('.opt')], fb=item.querySelector('.fb');
+  opts.forEach((o,oi)=>o.addEventListener('click',()=>{
+    if(item.dataset.done)return; item.dataset.done='1';
+    opts.forEach((x,i)=>{ x.classList.add(i===correct?'correct':(i===oi?'wrong':'dim')); x.style.cursor='default'; });
+    const r=oi===correct;
+    fb.textContent=(r?'Presne tak. ':'Nie celkom. ')+QEXP[qi];
+    fb.className='fb show '+(r?'ok':'no');
+  }));
+});
+
+/* ---------- GSAP choreografia ---------- */
+window.addEventListener('load',()=>{
+  if(!window.gsap || !window.ScrollTrigger){ return; } // bez knižníc: obsah je aj tak celý a čitateľný
+  gsap.registerPlugin(ScrollTrigger);
+
+  /* plynulý scroll (Lenis) */
+  if(window.Lenis && !RM){
+    const lenis=new Lenis({lerp:0.1, smoothWheel:true, wheelMultiplier:0.9});
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add(t=>lenis.raf(t*1000));
+    gsap.ticker.lagSmoothing(0);
+  }
+
+  /* progres */
+  gsap.to('#prog',{scaleX:1,ease:'none',scrollTrigger:{trigger:document.body,start:'top top',end:'bottom bottom',scrub:0.3}});
+
+  /* nav sa zjaví po úvode */
+  ScrollTrigger.create({trigger:'.lesson',start:'top 70%',
+    onEnter:()=>document.getElementById('nav').classList.add('show'),
+    onLeaveBack:()=>document.getElementById('nav').classList.remove('show')});
+
+  /* hero parallax odchod */
+  if(!RM){
+    gsap.to('.hero .glitch',{yPercent:-30,opacity:0,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:true}});
+    gsap.to('.hero .sub, .hero .by',{yPercent:-60,opacity:0,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:true}});
+  }
+
+  /* pinned statement: tvrdenia sa prelínajú, otázka zostáva */
+  if(!RM){
+    const tl=gsap.timeline({scrollTrigger:{trigger:'#statement',start:'top top',end:'+=320%',pin:true,scrub:1}});
+    const lines=['.l1','.l2','.l3'];
+    lines.forEach((sel)=>{
+      tl.fromTo(sel,{opacity:0,y:40},{opacity:1,y:0,duration:1})
+        .to(sel,{opacity:0,y:-40,duration:1},'+=0.7');
+    });
+    tl.fromTo('.l4',{opacity:0,y:40,scale:.96},{opacity:1,y:0,scale:1,duration:1.4},'+=0.1');
+    // dekóduj tvrdenia keď nabehnú
+    document.querySelectorAll('#statement [data-scramble]').forEach(el=>{
+      ScrollTrigger.create({trigger:el, start:'top 92%', onEnter:()=>scramble(el)});
+    });
+  }
+
+  /* reveal obsahu hodiny */
+  const reveals=gsap.utils.toArray('[data-reveal]');
+  reveals.forEach(el=>{
+    if(RM){ return; }
+    gsap.set(el,{opacity:0,y:26});
+    ScrollTrigger.create({trigger:el,start:'top 88%',once:true,
+      onEnter:()=>gsap.to(el,{opacity:1,y:0,duration:.8,ease:'power3.out'})});
+  });
+
+  /* nadpisy: jemný split-reveal po slovách */
+  if(window.SplitType && !RM){
+    document.querySelectorAll('h2.st-t').forEach(h=>{
+      const s=new SplitType(h,{types:'words'});
+      gsap.set(s.words,{yPercent:120,opacity:0});
+      ScrollTrigger.create({trigger:h,start:'top 85%',once:true,
+        onEnter:()=>gsap.to(s.words,{yPercent:0,opacity:1,duration:.7,stagger:0.04,ease:'power3.out'})});
+    });
+  }
+
+  /* dekódovanie kľúčových slov (telo + outro) */
+  document.querySelectorAll('.lesson [data-scramble], .outro [data-scramble]').forEach(el=>{
+    ScrollTrigger.create({trigger:el,start:'top 85%',once:true,onEnter:()=>scramble(el)});
+  });
+
+  /* SPEKTRUM: bod sleduje scroll = kontinuum dvojsečnosti */
+  const reads=[
+    {p:0.12,t:'dabing, satira, hlas po chorobe'},
+    {p:0.5 ,t:'paródia, ktorá môže byť aj urážka'},
+    {p:0.82,t:'podvod, vydieranie, dezinformácie'}
+  ];
+  const readEl=document.getElementById('specRead');
+  gsap.to('#specDot',{left:'98%',ease:'none',
+    scrollTrigger:{trigger:'#spectrum',start:'top 75%',end:'bottom 45%',scrub:0.4,
+      onUpdate:self=>{ const p=self.progress; let cur=reads[0].t;
+        for(const r of reads){ if(p>=r.p) cur=r.t; }
+        if(readEl.textContent!==cur) readEl.textContent=cur; }}});
+
+  /* LIAR'S DIVIDEND: na pravdivé video sa "nalepí" FALOŠNÉ? */
+  const liar=document.querySelector('#liar .ov');
+  if(liar){
+    ScrollTrigger.create({trigger:'#liar',start:'top 80%',once:true,
+      onEnter:()=>{ if(RM){liar.style.opacity=1;return;}
+        gsap.fromTo(liar,{opacity:0,scale:1.6,rotation:0},{opacity:1,scale:1.2,rotation:-12,duration:.5,ease:'back.out(2)',delay:.3}); }});
+  }
+
+  /* sekcia v navigácii */
+  const pos=document.getElementById('pos');
+  const labels={test:'Test oka',k01:'01 · Koncepcia',k02:'02 · ŠVP',k03:'03 · Ciele',k04:'04 · Pojmy',k05:'05 · Metódy',k06:'06 · Priebeh',k07:'07 · Prípady',k08:'08 · Reflexia',k09:'09 · Hodnotenie',k10:'10 · Etika',k11:'11 · Zdroje'};
+  Object.keys(labels).forEach(id=>{ const el=document.getElementById(id); if(!el)return;
+    ScrollTrigger.create({trigger:el,start:'top 40%',end:'bottom 40%',
+      onToggle:self=>{ if(self.isActive) pos.textContent=labels[id]; }});
+  });
+
+  ScrollTrigger.refresh();
+});
+</script>
+<!-- ============ WebGL: latentné pole častíc (Three.js) ============
+     Účel pre tému deepfake:
+     • idle = jemný „šum", surovina generatívnej AI
+     • reakcia na myš = obsah sa prispôsobuje tomu, kto sa pozerá
+     • scroll = častice sa rozsypú do 3D oblaku a vychladnú (z červenej do modrej),
+       slovo/štruktúra sa „rozplynie", keď prejdeme z hooku do vecnej hodiny
+     Bezpečné: ak THREE/WebGL chýba alebo je zapnuté obmedzenie pohybu, plátno sa skryje
+     a ostane CSS hero (glitch). -->
+<script>
+(function(){
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canvas = document.getElementById('gl');
+  if(!canvas) return;
+  if(RM || !window.THREE){ canvas.style.display='none'; return; }
+
+  let renderer, scene, camera, points, mat, raf=0;
+  let halfW=300, halfH=200;
+  const mouse = {x:1e6, y:1e6};
+  let scatter = 0;
+  const introEl = document.querySelector('.intro');
+
+  try{
+    renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+    renderer.setClearColor(0x000000, 0);
+  }catch(e){ canvas.style.display='none'; return; }
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 1, 3000);
+  camera.position.z = 320;
+
+  function visible(){
+    const vh = 2 * Math.tan((60*Math.PI/180)/2) * camera.position.z;
+    halfH = vh/2; halfW = halfH * (innerWidth/innerHeight);
+  }
+  visible();
+
+  // ----- častice tvoria slovo DEEPFAKE (vzorkované z offscreen plátna) -----
+  const WORD = 'DEEPFAKE';
+  const oc = document.createElement('canvas');
+  const octx = oc.getContext('2d');
+  const OW = 1100, OH = 340;
+  oc.width = OW; oc.height = OH;
+  octx.fillStyle = '#000'; octx.fillRect(0,0,OW,OH);
+  octx.fillStyle = '#fff';
+  octx.textAlign = 'center'; octx.textBaseline = 'middle';
+  let fs = 260;
+  octx.font = '900 '+fs+'px Archivo, Arial, sans-serif';
+  while(octx.measureText(WORD).width > OW*0.94 && fs > 40){ fs -= 6; octx.font = '900 '+fs+'px Archivo, Arial, sans-serif'; }
+  octx.fillText(WORD, OW/2, OH/2 + 4);
+  const img = octx.getImageData(0,0,OW,OH).data;
+
+  const P=[], S=[], C=[];
+  const STEP = 3;                       // hustota vzorkovania
+  const spanW = halfW*2*0.92;
+  const spanH = spanW*(OH/OW);
+  for(let y=0; y<OH; y+=STEP){
+    for(let x=0; x<OW; x+=STEP){
+      if(img[(y*OW+x)*4] > 128){        // biely pixel = tu je písmeno
+        const wx = (x/OW - 0.5)*spanW + (Math.random()-0.5)*1.6;
+        const wy = -(y/OH - 0.5)*spanH + (Math.random()-0.5)*1.6;
+        P.push(wx, wy, (Math.random()-0.5)*7);
+        S.push(Math.random());
+        let dx=Math.random()*2-1, dy=Math.random()*2-1, dz=Math.random()*2-1;
+        const l=Math.hypot(dx,dy,dz)||1;
+        C.push(dx/l, dy/l, dz/l);
+      }
+    }
+  }
+  const pos = new Float32Array(P), seed = new Float32Array(S), scat = new Float32Array(C);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+  geo.setAttribute('aScatterDir', new THREE.BufferAttribute(scat,3));
+
+  mat = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    uniforms:{
+      uTime:{value:0}, uScatter:{value:0},
+      uMouse:{value:new THREE.Vector2(1e6,1e6)},
+      uColor:{value:new THREE.Color(0.886,0.231,0.18)},
+      uSize:{value: Math.min(innerWidth,innerHeight) > 800 ? 7.0 : 5.0}
+    },
+    vertexShader:`
+      attribute float aSeed;
+      attribute vec3 aScatterDir;
+      uniform float uTime; uniform float uScatter; uniform float uSize;
+      uniform vec2 uMouse;
+      varying float vA;
+      float n2(vec2 p){ return sin(p.x*1.3+uTime*0.6)*cos(p.y*1.1-uTime*0.5); }
+      void main(){
+        vec3 pos = position;
+        float fl = n2(pos.xy*0.012 + aSeed*6.2831);
+        pos.z += fl*10.0;
+        pos.x += sin(uTime*0.4 + aSeed*6.2831)*1.6;
+        pos.y += cos(uTime*0.33 + aSeed*5.0)*1.6;
+        // odpudzovanie od myši v rovine
+        vec2 d = pos.xy - uMouse;
+        float dist = length(d);
+        float r = 70.0;
+        if(dist < r){ pos.xy += normalize(d + 0.0001)*(r-dist)*0.6; }
+        // rozptyl do 3D oblaku
+        vec3 sc = pos + aScatterDir * (200.0 + aSeed*440.0);
+        pos = mix(pos, sc, uScatter);
+        vec4 mv = modelViewMatrix * vec4(pos,1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = uSize * (320.0 / -mv.z) * (0.55 + 0.9*aSeed);
+        vA = (1.0 - uScatter*0.85) * (0.45 + 0.55*(fl*0.5+0.5));
+      }`,
+    fragmentShader:`
+      precision mediump float;
+      uniform vec3 uColor; varying float vA;
+      void main(){
+        vec2 c = gl_PointCoord - 0.5;
+        float dd = length(c);
+        if(dd > 0.5) discard;
+        float a = smoothstep(0.5, 0.0, dd) * clamp(vA,0.0,1.0) * 0.95;
+        gl_FragColor = vec4(uColor, a);
+      }`
+  });
+
+  points = new THREE.Points(geo, mat);
+  scene.add(points);
+  // WebGL beží → časticové slovo je titul; skry HTML nadpis a rozmiestni text okolo
+  document.querySelector('.hero')?.classList.add('gl-on');
+
+  // ----- vstupy -----
+  window.addEventListener('pointermove', e=>{
+    mouse.x = (e.clientX/innerWidth*2 - 1)*halfW;
+    mouse.y = -(e.clientY/innerHeight*2 - 1)*halfH;
+  }, {passive:true});
+  window.addEventListener('pointerleave', ()=>{ mouse.x=1e6; mouse.y=1e6; });
+
+  function onResize(){
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight, false);
+    visible();
+  }
+  window.addEventListener('resize', onResize);
+  onResize();
+
+  const cWarm = new THREE.Color(0.886,0.231,0.18);   // červená (výstraha)
+  const cCool = new THREE.Color(0.16,0.34,0.85);      // chladná (rozplynutie)
+  const tmpCol = new THREE.Color();
+
+  function loop(t){
+    raf = requestAnimationFrame(loop);
+    const introBottom = (introEl ? introEl.offsetTop + introEl.offsetHeight : innerHeight*3);
+    const sy = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if(sy > introBottom + 300) return; // mimo úvodu nerenderuj
+
+    scatter += ((Math.min(sy/(innerHeight*1.25),1)) - scatter)*0.08;
+    mat.uniforms.uTime.value = t*0.001;
+    mat.uniforms.uScatter.value = scatter;
+    mat.uniforms.uMouse.value.set(mouse.x, mouse.y);
+    tmpCol.copy(cWarm).lerp(cCool, scatter);
+    mat.uniforms.uColor.value.copy(tmpCol);
+    renderer.render(scene, camera);
+  }
+  raf = requestAnimationFrame(loop);
+})();
+</script>
+
+<!-- Getty-style „TitleStretch": veľké prvky sa zvisle naťahujú podľa scrollu -->
+<script>
+window.addEventListener('load', function(){
+  if(!window.gsap || !window.ScrollTrigger) return;
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  gsap.registerPlugin(ScrollTrigger);
+  gsap.utils.toArray('.s-num').forEach(function(el){
+    gsap.fromTo(el,{scaleY:0.65},{scaleY:1.18, transformOrigin:'top left', ease:'none',
+      scrollTrigger:{trigger:el.closest('.s'), start:'top bottom', end:'top top', scrub:true}});
+  });
+  const take = document.querySelector('.outro .take');
+  if(take){
+    gsap.fromTo(take,{scaleY:0.5},{scaleY:1, transformOrigin:'bottom', ease:'none',
+      scrollTrigger:{trigger:'.outro', start:'top bottom', end:'center center', scrub:true}});
+  }
+  ScrollTrigger.refresh();
+});
+</script>
+<!-- overlay pre detail prípadu z registra -->
+<div class="ov2" id="ov2" aria-hidden="true">
+  <div class="ov2__box" role="dialog" aria-modal="true">
+    <button class="ov2__x" id="ov2x">zavrieť ✕</button>
+    <div class="ov2__n" id="ov2n"></div>
+    <div class="ov2__t" id="ov2t"></div>
+    <div class="ov2__b"><span id="ov2b"></span><span class="tie" id="ov2tie"></span></div>
+  </div>
+</div>
+
+<!-- ============ VRSTVENÉ EFEKTY: kapitolové farby, flip, naťahovanie, kreslenie sketchov, hotspoty, register ============ -->
+<script>
+(function(){
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // farba pozadia predelov (aj bez animácií)
+  document.querySelectorAll('.ilude').forEach(il=>{ const c=il.getAttribute('data-theme'); if(c) il.style.background=c; });
+
+  // ---- hotspot tvár (vanilla, funguje vždy) ----
+  const face=document.querySelector('.hotface'), tip=document.getElementById('facetip');
+  if(face && tip){
+    face.querySelectorAll('.hs').forEach(b=>{
+      b.addEventListener('click',()=>{
+        const wasOn=b.classList.contains('on');
+        face.querySelectorAll('.hs').forEach(x=>x.classList.remove('on'));
+        if(wasOn){ tip.classList.remove('on'); return; }
+        b.classList.add('on');
+        tip.innerHTML=b.getAttribute('data-tip');
+        tip.style.left=b.style.left;
+        tip.style.top='calc('+b.style.top+' + 24px)';
+        tip.classList.add('on');
+      });
+    });
+  }
+
+  // ---- register: detail v overlayi (vanilla) ----
+  const ov=document.getElementById('ov2');
+  if(ov){
+    const n=document.getElementById('ov2n'),t=document.getElementById('ov2t'),b=document.getElementById('ov2b'),tie=document.getElementById('ov2tie');
+    const open=c=>{ n.textContent='Prípad '+c.dataset.n; t.textContent=c.dataset.t; b.textContent=c.dataset.b; tie.textContent=c.dataset.tie; ov.classList.add('on'); };
+    const close=()=>ov.classList.remove('on');
+    document.querySelectorAll('.regcard').forEach(c=>c.addEventListener('click',()=>open(c)));
+    document.getElementById('ov2x').addEventListener('click',close);
+    ov.addEventListener('click',e=>{ if(e.target===ov) close(); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); });
+  }
+
+  if(RM || !window.gsap || !window.ScrollTrigger) return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  document.querySelectorAll('.ilude').forEach(il=>{
+    const col=il.getAttribute('data-theme');
+    const title=il.querySelector('[data-flip]');
+
+    // flip titulku po znakoch (slová ostanú vcelku → žiadne lámanie uprostred slova)
+    if(window.SplitType && title){
+      const sp=new SplitType(title,{types:'words,chars'});
+      sp.chars.forEach(c=>c.classList.add('flip-char'));
+      gsap.set(sp.chars,{rotationX:-92,opacity:0,transformOrigin:'50% 100%',transformPerspective:600});
+      ScrollTrigger.create({trigger:il,start:'top 62%',once:true,
+        onEnter:()=>gsap.to(sp.chars,{rotationX:0,opacity:1,duration:.6,stagger:0.03,ease:'back.out(1.6)'})});
+    }
+
+    // farba kapitoly preteká do popiskov sekcií
+    const setTheme=()=>document.documentElement.style.setProperty('--theme', col);
+    ScrollTrigger.create({trigger:il,start:'top 55%',end:'bottom top',onEnter:setTheme,onEnterBack:setTheme});
+
+    // samokresliace sketche — kreslia sa celý čas, kým predel stúpa do stredu (jasne viditeľné)
+    const draws=il.querySelectorAll('.sketch .dr');
+    if(draws.length) gsap.fromTo(draws,{strokeDashoffset:1},{strokeDashoffset:0,ease:'none',stagger:0.04,
+      scrollTrigger:{trigger:il,start:'top bottom',end:'center center',scrub:0.6}});
+    const dots=il.querySelectorAll('.sketch .dot');
+    if(dots.length) gsap.fromTo(dots,{opacity:0,scale:0},{opacity:1,scale:1,transformOrigin:'center',stagger:0.06,
+      scrollTrigger:{trigger:il,start:'top 40%',end:'center center',scrub:0.6}});
+    // jemné naťahovanie titulku počas prechodu (bez pinu)
+    if(title) gsap.fromTo(title,{scaleY:0.85},{scaleY:1.08,ease:'none',
+      scrollTrigger:{trigger:il,start:'top bottom',end:'bottom top',scrub:true}});
+  });
+
+  ScrollTrigger.refresh();
+})();
+</script>
+</body>
+</html>
