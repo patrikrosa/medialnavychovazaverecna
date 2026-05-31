@@ -1,34 +1,42 @@
 <!DOCTYPE html>
+<!--
+  ───────────────────────────────────────────────
+   DEEPFAKE — vzorová hodina mediálnej výchovy
+   Autor: Patrik Rosa · 9. ročník ZŠ · nový ŠVP 2023
+  ───────────────────────────────────────────────
+
+   Ak toto čítaš, si asi jediný človek, čo niekedy otvoril zdroják tejto
+   stránky. Aj tak si to nikto nikdy nepozrie, tak je vlastne jedno, čo
+   sem napíšem. Dalo to viac roboty, ako to vyzerá. Maj sa.
+-->
 <html lang="sk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Deepfake — vzorová hodina mediálnej výchovy</title>
 
-<!-- Fonts: Bodoni Moda = autoritatívny "klasický" displej (pravda/monument), Archivo = čitateľné telo, JetBrains Mono = forenzná/dátová vrstva -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;0,6..96,900;1,6..96,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- Engine: GSAP + ScrollTrigger (scroll choreografia), Lenis (plynulý scroll), SplitType (delenie textu na slová/znaky) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/split-type@0.3.4/umd/index.min.js"></script>
-<!-- WebGL: pole častíc = latentný šum, z ktorého generatívna AI vytvára obsah -->
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
 <style>
   :root{
-    --d-bg:#0b0b0d;          /* tma: úvod/záver */
+    --d-bg:#0b0b0d;
     --d-ink:#f3efe6;
     --d-soft:#8b8678;
-    --l-bg:#f4f1ea;          /* svetlo: čitateľná hodina */
+    --l-bg:#f4f1ea;
     --l-ink:#191712;
     --l-soft:#6f6b61;
     --line:#e2ddd0;
-    --acc:#e23b2e;           /* jediný akcent: výstraha / falošné */
-    --real:#2f7d54;          /* len v teste: reálne */
+    --acc:#e23b2e;
+    --real:#2f7d54;
     --blue:#2a52cc;
     --serif:"Bodoni Moda",Georgia,serif;
     --sans:"Archivo",-apple-system,Helvetica,Arial,sans-serif;
@@ -41,18 +49,15 @@
   a{color:inherit;text-decoration:none}
   img{display:block;max-width:100%}
 
-  /* ---------- film grain = "syntetický šum", surovina generovaných médií ---------- */
   .grain{position:fixed;inset:-50%;z-index:9000;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     animation:grain 0.5s steps(2) infinite}
   @keyframes grain{0%{transform:translate(0,0)}50%{transform:translate(-3%,2%)}100%{transform:translate(2%,-2%)}}
 
-  /* ---------- preloader ---------- */
   .pre{position:fixed;inset:0;z-index:9999;background:var(--d-bg);color:var(--d-ink);display:flex;align-items:flex-end;justify-content:space-between;padding:6vw}
   .pre .pl{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--d-soft)}
   .pre .pc{font-family:var(--serif);font-size:clamp(60px,16vw,200px);font-weight:900;line-height:.8}
 
-  /* ---------- progress + nav ---------- */
   #prog{position:fixed;top:0;left:0;height:2px;width:100%;background:var(--acc);transform:scaleX(0);transform-origin:left;z-index:8000}
   nav.bar{position:fixed;top:0;left:0;width:100%;z-index:7000;display:flex;justify-content:space-between;align-items:center;
     padding:14px 24px;mix-blend-mode:difference;color:#fff;opacity:0;pointer-events:none;transition:opacity .4s}
@@ -64,13 +69,10 @@
   .mono{font-family:var(--mono)}
   .kick{font-family:var(--mono);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
 
-  /* =========================================================
-     INTRO (dark)
-     ========================================================= */
   .intro{position:relative;z-index:1;background:transparent;color:var(--d-ink)}
-  /* fixné WebGL plátno za úvodom; lekcia (z-index:2) ho pri scrolle prekryje */
+
   #gl{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
-  /* keď beží WebGL: titul je z častíc, ostatný text sa rozmiestni okolo stredu */
+
   .hero.gl-on{justify-content:flex-end;padding-bottom:15vh}
   .hero.gl-on .glitch{display:none}
   .hero.gl-on .kick{position:absolute;top:13vh;left:6vw;margin:0}
@@ -89,16 +91,12 @@
   .scrollhint span{display:inline-block;animation:bob 1.6s ease-in-out infinite}
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
 
-  /* pinned statement sequence */
   #statement{height:100vh;display:flex;align-items:center;justify-content:center;padding:0 6vw;position:relative;overflow:hidden}
   .st-line{position:absolute;max-width:18ch;text-align:center;font-family:var(--serif);font-weight:500;
     font-size:clamp(34px,6vw,78px);line-height:1.05;letter-spacing:-.02em;opacity:0}
   .st-line.q{max-width:24ch;font-style:italic}
   .st-line .em{color:var(--acc)}
 
-  /* =========================================================
-     LESSON (light)
-     ========================================================= */
   .lesson{background:var(--l-bg);color:var(--l-ink);position:relative;z-index:2}
   .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
   .col{max-width:720px;margin:0 auto}
@@ -131,7 +129,6 @@
   .block .pick{font-family:var(--serif);font-style:italic;font-size:20px;color:var(--acc);display:block;margin-bottom:8px}
   .block p:last-child{margin-bottom:0}
 
-  /* dual-use spectrum: bod sleduje tvoj scroll = kontinuum využitia */
   #spectrum{margin:26px 0}
   .spec-track{position:relative;height:3px;background:linear-gradient(90deg,var(--real),#ccc,var(--acc));border-radius:3px;margin:36px 0 14px}
   .spec-dot{position:absolute;top:50%;left:2%;width:18px;height:18px;border-radius:50%;background:var(--l-bg);border:2px solid var(--l-ink);transform:translate(-50%,-50%);box-shadow:0 2px 10px rgba(0,0,0,.15)}
@@ -154,13 +151,11 @@
   .callout{border:1px solid var(--line);border-left:3px solid var(--acc);background:#fdf1ef;border-radius:0 10px 10px 0;padding:14px 18px;margin:12px 0;font-size:15.5px}
   .callout.b{border-left-color:var(--blue);background:#eef1fc}
 
-  /* liar's dividend mikro-vizuál: pravda prepečiatkovaná na "falošné" */
   .stampword{position:relative;display:inline-block;font-weight:700}
   .stampword .ov{position:absolute;left:100%;top:-0.5em;margin-left:10px;transform:rotate(-7deg);
     font-family:var(--mono);font-weight:700;color:var(--acc);border:2.5px solid var(--acc);border-radius:5px;
     padding:3px 9px;font-size:13px;letter-spacing:.08em;white-space:nowrap;opacity:0}
 
-  /* test */
   .ex{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:20px 22px;margin-bottom:14px;position:relative;overflow:hidden}
   .ex .exn{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--l-soft)}
   .ex .claim{font-family:var(--serif);font-style:italic;font-size:19px;margin:8px 0 16px;line-height:1.35}
@@ -178,7 +173,6 @@
   .ex.fake .stamp{color:var(--acc);border-color:var(--acc)}
   .ex.real .stamp{color:var(--real);border-color:var(--real)}
 
-  /* kvíz */
   .quiz{border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:22px}
   .q{padding:15px 0;border-top:1px solid var(--line)}
   .q:first-of-type{border-top:none}
@@ -201,9 +195,6 @@
   ol.src li{margin-bottom:10px}
   ol.src .d{font-family:var(--mono);font-size:12.5px;color:var(--l-soft);margin-top:2px}
 
-  /* =========================================================
-     OUTRO (dark)
-     ========================================================= */
   .outro{background:var(--d-bg);color:var(--d-ink);padding:18vh 6vw;position:relative;z-index:2}
   .outro .q{font-family:var(--serif);font-style:italic;font-weight:500;font-size:clamp(30px,5.5vw,72px);line-height:1.1;max-width:18ch}
   .outro .take{font-family:var(--serif);font-weight:900;font-size:clamp(40px,9vw,120px);line-height:.9;margin:8vh 0 6vh;color:var(--acc)}
@@ -215,7 +206,7 @@
     body{font-size:17px}
     .s-head{grid-template-columns:1fr}.s-num{font-size:46px}
   }
-  /* prístupnosť: vypni pohyb */
+
   @media (prefers-reduced-motion:reduce){
     .grain{animation:none;opacity:.04}
     .glitch::before,.glitch::after{display:none}
@@ -223,11 +214,10 @@
     .st-line{position:relative;opacity:1;margin:18px auto}
     #statement{height:auto;display:block;padding:12vh 6vw}
   }
-  /* ========== VRSTVENÉ EFEKTY (kapitolové predely, sketch, hotspoty, register) ========== */
+
   html{--theme:#e23b2e}
   .s-titles .lab{color:var(--theme)}
 
-  /* celoobrazovkový farebný predel medzi časťami = "color shift per chapter" */
   .ilude{position:relative;width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
     min-height:100vh;display:flex;align-items:center;padding:9vh 0;overflow:hidden;color:#fff;z-index:2;background:#b23a2b}
   .ilude__in{max-width:1180px;width:100%;margin:0 auto;padding:0 6vw;position:relative}
@@ -246,7 +236,6 @@
     .ilude .sketch{position:static;transform:none;width:74%;margin:26px auto 0;display:block}
   }
 
-  /* hotspot tvár = interaktívne indície */
   .hint{font-family:var(--mono);font-size:12px;color:var(--l-soft);text-align:center;margin:6px 0 14px}
   .hotface{position:relative;max-width:440px;margin:0 auto 22px}
   .hotface svg{width:100%;height:auto;display:block}
@@ -261,7 +250,6 @@
   .hotface .tip.on{display:block}
   .hotface .tip b{color:#ff8c7a;font-weight:700}
 
-  /* register prípadov = mriežka s detailmi v overlayi */
   .reg{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px;margin:8px 0 6px}
   .regcard{text-align:left;border:1px solid var(--line);background:#fffdf8;border-radius:12px;padding:16px 18px 28px;
     cursor:pointer;transition:.18s;position:relative;font-family:var(--sans);color:var(--l-ink)}
@@ -304,19 +292,18 @@
   <div class="pos" id="pos">úvod</div>
 </nav>
 
-<!-- ===================== INTRO ===================== -->
+<!-- úvod -->
 <div class="intro">
   <canvas id="gl" aria-hidden="true"></canvas>
   <section class="hero">
     <div class="kick">Vzorová hodina mediálnej výchovy</div>
-    <!-- glitch→resolve = nepokojné "je to skutočné?" -->
+
     <h1 class="glitch" data-text="Deepfake">Deepfake</h1>
     <div class="sub">keď už neveríme vlastným očiam</div>
     <div class="by">Pripravil Patrik Rosa · 9. ročník ZŠ · nový ŠVP 2023</div>
     <div class="scrollhint"><span>↓ scrolluj</span></div>
   </section>
 
-  <!-- pinned: tvrdenia sa dekódujú zo šumu (AI generuje z náhody) -->
   <section id="statement">
     <p class="st-line l1" data-scramble>Toto video nikdy nevzniklo.</p>
     <p class="st-line l2" data-scramble>Tento hlas nikto nenahral.</p>
@@ -325,7 +312,7 @@
   </section>
 </div>
 
-<!-- ===================== LESSON ===================== -->
+<!-- hodina -->
 <main class="lesson">
 <div class="wrap"><div class="col">
 
@@ -340,7 +327,7 @@
     </div>
   </div>
 
-  <!-- TEST -->
+  <!-- test oka -->
   <section class="s" id="test">
     <div class="s-head"><div class="s-num">→</div><div class="s-titles"><span class="lab">interaktívne</span><h2 class="st-t">Test oka: reálne, alebo deepfake?</h2></div></div>
     <p class="dek" data-reveal>Takto sa začína hodina. Tipni si pri každom prípade a potom si odhaľ verdikt.</p>
@@ -508,7 +495,7 @@
     <div class="phase" data-reveal>
       <div class="ph"><span class="L">U</span><span class="nm">Uvedomenie si významu</span><span class="t">~25 min</span></div>
       <p><span class="mins">10–15′</span> &nbsp;<b>Mini-výklad: princíp a spektrum.</b> Stručne: AI sa naučí tvár/hlas z dát a vygeneruje nový obsah. <b>Bez návodu.</b> Na tabuli vzniká spektrum využitia:</p>
-      <!-- spektrum: bod putuje s tvojím scrollom -->
+
       <div id="spectrum">
         <div class="spec-track"><div class="spec-dot" id="specDot"></div></div>
         <div class="spec-ends"><span class="l">neškodné</span><span class="r">škodlivé</span></div>
@@ -716,10 +703,10 @@
 </div></div>
 </main>
 
-<!-- ===================== OUTRO ===================== -->
+<!-- záver -->
 <footer class="outro">
   <p class="q" data-reveal>Komu a čomu sa dá ešte veriť?</p>
-  <!-- dekódovanie = z chaosu sa vynára použiteľné ponaučenie -->
+
   <div class="take" data-scramble>Over zdroj.</div>
   <p class="by">
     Vzorová hodina mediálnej výchovy · téma <b>Deepfake</b><br>
@@ -731,7 +718,6 @@
 <script>
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ---------- preloader ---------- */
 (function(){
   const pre=document.getElementById('pre'), c=document.getElementById('preCount'), l=document.getElementById('preLabel');
   let n=0; const step=()=>{ n+=Math.floor(Math.random()*18)+6; if(n>100)n=100;
@@ -748,7 +734,6 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   setTimeout(hide, 4000); // poistka
 })();
 
-/* ---------- decode-from-noise (AI generuje z náhody) ---------- */
 function scramble(el){
   const fin = (el.dataset.text!=null?el.dataset.text:el.textContent);
   el.dataset.text = fin;
@@ -765,7 +750,6 @@ function scramble(el){
   })(performance.now());
 }
 
-/* ---------- interaktívny TEST: klik = rozsudok o pravosti (pečiatka) ---------- */
 document.querySelectorAll('.ex').forEach(ex=>{
   const v=ex.getAttribute('data-verdict'), stamp=ex.querySelector('.stamp');
   ex.querySelectorAll('[data-c]').forEach(b=>{
@@ -780,7 +764,6 @@ document.querySelectorAll('.ex').forEach(ex=>{
   });
 });
 
-/* ---------- kvíz ---------- */
 const QEXP=[
   'Dividenda klamára: keď ľudia vedia o falzifikátoch, dá sa spochybniť aj skutočný dôkaz.',
   'Vizuálne chyby sa falšujú čoraz lepšie — najistejšie je overiť zdroj a počkať na overovateľov.',
@@ -798,12 +781,10 @@ document.querySelectorAll('.q').forEach((item,qi)=>{
   }));
 });
 
-/* ---------- GSAP choreografia ---------- */
 window.addEventListener('load',()=>{
   if(!window.gsap || !window.ScrollTrigger){ return; } // bez knižníc: obsah je aj tak celý a čitateľný
   gsap.registerPlugin(ScrollTrigger);
 
-  /* plynulý scroll (Lenis) */
   if(window.Lenis && !RM){
     const lenis=new Lenis({lerp:0.1, smoothWheel:true, wheelMultiplier:0.9});
     lenis.on('scroll', ScrollTrigger.update);
@@ -811,21 +792,17 @@ window.addEventListener('load',()=>{
     gsap.ticker.lagSmoothing(0);
   }
 
-  /* progres */
   gsap.to('#prog',{scaleX:1,ease:'none',scrollTrigger:{trigger:document.body,start:'top top',end:'bottom bottom',scrub:0.3}});
 
-  /* nav sa zjaví po úvode */
   ScrollTrigger.create({trigger:'.lesson',start:'top 70%',
     onEnter:()=>document.getElementById('nav').classList.add('show'),
     onLeaveBack:()=>document.getElementById('nav').classList.remove('show')});
 
-  /* hero parallax odchod */
   if(!RM){
     gsap.to('.hero .glitch',{yPercent:-30,opacity:0,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:true}});
     gsap.to('.hero .sub, .hero .by',{yPercent:-60,opacity:0,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:true}});
   }
 
-  /* pinned statement: tvrdenia sa prelínajú, otázka zostáva */
   if(!RM){
     const tl=gsap.timeline({scrollTrigger:{trigger:'#statement',start:'top top',end:'+=320%',pin:true,scrub:1}});
     const lines=['.l1','.l2','.l3'];
@@ -834,13 +811,11 @@ window.addEventListener('load',()=>{
         .to(sel,{opacity:0,y:-40,duration:1},'+=0.7');
     });
     tl.fromTo('.l4',{opacity:0,y:40,scale:.96},{opacity:1,y:0,scale:1,duration:1.4},'+=0.1');
-    // dekóduj tvrdenia keď nabehnú
     document.querySelectorAll('#statement [data-scramble]').forEach(el=>{
       ScrollTrigger.create({trigger:el, start:'top 92%', onEnter:()=>scramble(el)});
     });
   }
 
-  /* reveal obsahu hodiny */
   const reveals=gsap.utils.toArray('[data-reveal]');
   reveals.forEach(el=>{
     if(RM){ return; }
@@ -849,7 +824,6 @@ window.addEventListener('load',()=>{
       onEnter:()=>gsap.to(el,{opacity:1,y:0,duration:.8,ease:'power3.out'})});
   });
 
-  /* nadpisy: jemný split-reveal po slovách */
   if(window.SplitType && !RM){
     document.querySelectorAll('h2.st-t').forEach(h=>{
       const s=new SplitType(h,{types:'words'});
@@ -859,12 +833,10 @@ window.addEventListener('load',()=>{
     });
   }
 
-  /* dekódovanie kľúčových slov (telo + outro) */
   document.querySelectorAll('.lesson [data-scramble], .outro [data-scramble]').forEach(el=>{
     ScrollTrigger.create({trigger:el,start:'top 85%',once:true,onEnter:()=>scramble(el)});
   });
 
-  /* SPEKTRUM: bod sleduje scroll = kontinuum dvojsečnosti */
   const reads=[
     {p:0.12,t:'dabing, satira, hlas po chorobe'},
     {p:0.5 ,t:'paródia, ktorá môže byť aj urážka'},
@@ -877,7 +849,6 @@ window.addEventListener('load',()=>{
         for(const r of reads){ if(p>=r.p) cur=r.t; }
         if(readEl.textContent!==cur) readEl.textContent=cur; }}});
 
-  /* LIAR'S DIVIDEND: na pravdivé video sa "nalepí" FALOŠNÉ? */
   const liar=document.querySelector('#liar .ov');
   if(liar){
     ScrollTrigger.create({trigger:'#liar',start:'top 80%',once:true,
@@ -885,7 +856,6 @@ window.addEventListener('load',()=>{
         gsap.fromTo(liar,{opacity:0,scale:1.6,rotation:0},{opacity:1,scale:1.2,rotation:-12,duration:.5,ease:'back.out(2)',delay:.3}); }});
   }
 
-  /* sekcia v navigácii */
   const pos=document.getElementById('pos');
   const labels={test:'Test oka',k01:'01 · Koncepcia',k02:'02 · ŠVP',k03:'03 · Ciele',k04:'04 · Pojmy',k05:'05 · Metódy',k06:'06 · Priebeh',k07:'07 · Prípady',k08:'08 · Reflexia',k09:'09 · Hodnotenie',k10:'10 · Etika',k11:'11 · Zdroje'};
   Object.keys(labels).forEach(id=>{ const el=document.getElementById(id); if(!el)return;
@@ -896,14 +866,7 @@ window.addEventListener('load',()=>{
   ScrollTrigger.refresh();
 });
 </script>
-<!-- ============ WebGL: latentné pole častíc (Three.js) ============
-     Účel pre tému deepfake:
-     • idle = jemný „šum", surovina generatívnej AI
-     • reakcia na myš = obsah sa prispôsobuje tomu, kto sa pozerá
-     • scroll = častice sa rozsypú do 3D oblaku a vychladnú (z červenej do modrej),
-       slovo/štruktúra sa „rozplynie", keď prejdeme z hooku do vecnej hodiny
-     Bezpečné: ak THREE/WebGL chýba alebo je zapnuté obmedzenie pohybu, plátno sa skryje
-     a ostane CSS hero (glitch). -->
+
 <script>
 (function(){
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -933,7 +896,6 @@ window.addEventListener('load',()=>{
   }
   visible();
 
-  // ----- častice tvoria slovo DEEPFAKE (vzorkované z offscreen plátna) -----
   const WORD = 'DEEPFAKE';
   const oc = document.createElement('canvas');
   const octx = oc.getContext('2d');
@@ -949,12 +911,12 @@ window.addEventListener('load',()=>{
   const img = octx.getImageData(0,0,OW,OH).data;
 
   const P=[], S=[], C=[];
-  const STEP = 3;                       // hustota vzorkovania
+  const STEP = 3;
   const spanW = halfW*2*0.92;
   const spanH = spanW*(OH/OW);
   for(let y=0; y<OH; y+=STEP){
     for(let x=0; x<OW; x+=STEP){
-      if(img[(y*OW+x)*4] > 128){        // biely pixel = tu je písmeno
+      if(img[(y*OW+x)*4] > 128){
         const wx = (x/OW - 0.5)*spanW + (Math.random()-0.5)*1.6;
         const wy = -(y/OH - 0.5)*spanH + (Math.random()-0.5)*1.6;
         P.push(wx, wy, (Math.random()-0.5)*7);
@@ -992,12 +954,10 @@ window.addEventListener('load',()=>{
         pos.z += fl*10.0;
         pos.x += sin(uTime*0.4 + aSeed*6.2831)*1.6;
         pos.y += cos(uTime*0.33 + aSeed*5.0)*1.6;
-        // odpudzovanie od myši v rovine
         vec2 d = pos.xy - uMouse;
         float dist = length(d);
         float r = 70.0;
         if(dist < r){ pos.xy += normalize(d + 0.0001)*(r-dist)*0.6; }
-        // rozptyl do 3D oblaku
         vec3 sc = pos + aScatterDir * (200.0 + aSeed*440.0);
         pos = mix(pos, sc, uScatter);
         vec4 mv = modelViewMatrix * vec4(pos,1.0);
@@ -1019,10 +979,8 @@ window.addEventListener('load',()=>{
 
   points = new THREE.Points(geo, mat);
   scene.add(points);
-  // WebGL beží → časticové slovo je titul; skry HTML nadpis a rozmiestni text okolo
   document.querySelector('.hero')?.classList.add('gl-on');
 
-  // ----- vstupy -----
   window.addEventListener('pointermove', e=>{
     mouse.x = (e.clientX/innerWidth*2 - 1)*halfW;
     mouse.y = -(e.clientY/innerHeight*2 - 1)*halfH;
@@ -1037,8 +995,8 @@ window.addEventListener('load',()=>{
   window.addEventListener('resize', onResize);
   onResize();
 
-  const cWarm = new THREE.Color(0.886,0.231,0.18);   // červená (výstraha)
-  const cCool = new THREE.Color(0.16,0.34,0.85);      // chladná (rozplynutie)
+  const cWarm = new THREE.Color(0.886,0.231,0.18);
+  const cCool = new THREE.Color(0.16,0.34,0.85);
   const tmpCol = new THREE.Color();
 
   function loop(t){
@@ -1059,7 +1017,6 @@ window.addEventListener('load',()=>{
 })();
 </script>
 
-<!-- Getty-style „TitleStretch": veľké prvky sa zvisle naťahujú podľa scrollu -->
 <script>
 window.addEventListener('load', function(){
   if(!window.gsap || !window.ScrollTrigger) return;
@@ -1077,7 +1034,7 @@ window.addEventListener('load', function(){
   ScrollTrigger.refresh();
 });
 </script>
-<!-- overlay pre detail prípadu z registra -->
+
 <div class="ov2" id="ov2" aria-hidden="true">
   <div class="ov2__box" role="dialog" aria-modal="true">
     <button class="ov2__x" id="ov2x">zavrieť ✕</button>
@@ -1087,15 +1044,12 @@ window.addEventListener('load', function(){
   </div>
 </div>
 
-<!-- ============ VRSTVENÉ EFEKTY: kapitolové farby, flip, naťahovanie, kreslenie sketchov, hotspoty, register ============ -->
 <script>
 (function(){
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // farba pozadia predelov (aj bez animácií)
   document.querySelectorAll('.ilude').forEach(il=>{ const c=il.getAttribute('data-theme'); if(c) il.style.background=c; });
 
-  // ---- hotspot tvár (vanilla, funguje vždy) ----
   const face=document.querySelector('.hotface'), tip=document.getElementById('facetip');
   if(face && tip){
     face.querySelectorAll('.hs').forEach(b=>{
@@ -1112,7 +1066,6 @@ window.addEventListener('load', function(){
     });
   }
 
-  // ---- register: detail v overlayi (vanilla) ----
   const ov=document.getElementById('ov2');
   if(ov){
     const n=document.getElementById('ov2n'),t=document.getElementById('ov2t'),b=document.getElementById('ov2b'),tie=document.getElementById('ov2tie');
@@ -1131,7 +1084,6 @@ window.addEventListener('load', function(){
     const col=il.getAttribute('data-theme');
     const title=il.querySelector('[data-flip]');
 
-    // flip titulku po znakoch (slová ostanú vcelku → žiadne lámanie uprostred slova)
     if(window.SplitType && title){
       const sp=new SplitType(title,{types:'words,chars'});
       sp.chars.forEach(c=>c.classList.add('flip-char'));
@@ -1140,18 +1092,15 @@ window.addEventListener('load', function(){
         onEnter:()=>gsap.to(sp.chars,{rotationX:0,opacity:1,duration:.6,stagger:0.03,ease:'back.out(1.6)'})});
     }
 
-    // farba kapitoly preteká do popiskov sekcií
     const setTheme=()=>document.documentElement.style.setProperty('--theme', col);
     ScrollTrigger.create({trigger:il,start:'top 55%',end:'bottom top',onEnter:setTheme,onEnterBack:setTheme});
 
-    // samokresliace sketche — kreslia sa celý čas, kým predel stúpa do stredu (jasne viditeľné)
     const draws=il.querySelectorAll('.sketch .dr');
     if(draws.length) gsap.fromTo(draws,{strokeDashoffset:1},{strokeDashoffset:0,ease:'none',stagger:0.04,
       scrollTrigger:{trigger:il,start:'top bottom',end:'center center',scrub:0.6}});
     const dots=il.querySelectorAll('.sketch .dot');
     if(dots.length) gsap.fromTo(dots,{opacity:0,scale:0},{opacity:1,scale:1,transformOrigin:'center',stagger:0.06,
       scrollTrigger:{trigger:il,start:'top 40%',end:'center center',scrub:0.6}});
-    // jemné naťahovanie titulku počas prechodu (bez pinu)
     if(title) gsap.fromTo(title,{scaleY:0.85},{scaleY:1.08,ease:'none',
       scrollTrigger:{trigger:il,start:'top bottom',end:'bottom top',scrub:true}});
   });
